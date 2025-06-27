@@ -1,17 +1,18 @@
-
+// Modelo de datos para un fichaje/histórico
 class Historico {
-  final int id;
-  final String? cifEmpresa;
-  final String? usuario;
-  final String fechaEntrada;      // SIEMPRE debe tener valor para la nube
-  final String? fechaSalida;
-  final String? tipo;
-  final int? incidenciaCodigo;    // Local sólo, NO se usa en la nube
-  final String? observaciones;
-  final String? nombreEmpleado; 
-  final String? dniEmpleado;
-  final String? idSucursal;
+  final int id;                    // ID en la base de datos local
+  final String? cifEmpresa;        // CIF de la empresa
+  final String? usuario;           // Usuario que ficha
+  final String fechaEntrada;       // Fecha/hora de entrada (siempre tiene valor)
+  final String? fechaSalida;       // Fecha/hora de salida (opcional)
+  final String? tipo;              // Tipo de fichaje (Entrada, Salida, Incidencia)
+  final int? incidenciaCodigo;     // Código de incidencia (solo local)
+  final String? observaciones;     // Observaciones (opcional)
+  final String? nombreEmpleado;    // Nombre del empleado (opcional)
+  final String? dniEmpleado;       // DNI del empleado (opcional)
+  final String? idSucursal;        // ID de la sucursal (opcional)
 
+  // Constructor
   Historico({
     required this.id,
     required this.fechaEntrada,
@@ -63,7 +64,7 @@ class Historico {
     );
   }
 
-  /// Para visualización/sincronización
+  /// Para visualización/sincronización (incluye todos los campos)
   Map<String, dynamic> toMap() {
     return {
       'id'               : id,
@@ -80,7 +81,7 @@ class Historico {
     };
   }
 
-  /// Para guardar en SQLite (sin id)
+  /// Para guardar en SQLite (sin id, para inserciones)
   Map<String, dynamic> toDbMap() {
     return {
       'cif_empresa'      : cifEmpresa,
@@ -100,6 +101,7 @@ class Historico {
 /// Extensión: Para enviar a PHP solo los campos requeridos.
 /// NO envía incidencia_codigo (no lo usas en la nube).
 extension HistoricoPhp on Historico {
+  // Convierte el fichaje a un mapa solo con los campos necesarios para la API PHP
   Map<String, String> toPhpBody() {
     final map = {
       'cif_empresa'      : cifEmpresa      ?? '',

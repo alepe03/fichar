@@ -1,10 +1,12 @@
+// Modelo de datos para una sucursal
 class Sucursal {
-  final String cifEmpresa;   // NOT NULL
-  final String codigo;       // NOT NULL
-  final String nombre;       // NOT NULL
-  final String? direccion;   // Puede ser NULL
-  final String? horario;     // Puede ser NULL
+  final String cifEmpresa;   // CIF de la empresa (obligatorio)
+  final String codigo;       // Código de la sucursal (obligatorio)
+  final String nombre;       // Nombre de la sucursal (obligatorio)
+  final String? direccion;   // Dirección de la sucursal (opcional)
+  final String? horario;     // Horario de la sucursal (opcional)
 
+  // Constructor
   Sucursal({
     required this.cifEmpresa,
     required this.codigo,
@@ -13,7 +15,7 @@ class Sucursal {
     this.horario,
   });
 
-  // Desde SQLite/Map
+  // Crea una sucursal a partir de un Map (por ejemplo, desde SQLite/local DB)
   factory Sucursal.fromMap(Map<String, dynamic> map) {
     return Sucursal(
       cifEmpresa: map['cif_empresa']?.toString() ?? '',
@@ -24,7 +26,7 @@ class Sucursal {
     );
   }
 
-  // Desde CSV (API)
+  // Crea una sucursal a partir de una línea CSV (de la API)
   factory Sucursal.fromCsv(String line) {
     final parts = line.split(';');
     return Sucursal(
@@ -36,6 +38,7 @@ class Sucursal {
     );
   }
 
+  // Convierte la sucursal a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
       'cif_empresa': cifEmpresa,

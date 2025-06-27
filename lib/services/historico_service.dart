@@ -1,13 +1,13 @@
-import '../models/historico.dart';
-import '../db/database_helper.dart';
-import 'package:http/http.dart' as http;
+import '../models/historico.dart';           // Modelo de fichaje/histórico
+import '../db/database_helper.dart';         // Helper para la base de datos local
+import 'package:http/http.dart' as http;     // Para peticiones HTTP
 
 /// Servicio para gestionar el histórico de fichajes (local y remoto)
 class HistoricoService {
   /// Guarda un nuevo fichaje en la base de datos local SQLite.
   static Future<void> guardarFichajeLocal(Historico historico) async {
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Intentando guardar: ${historico.toMap()}');
-    await DatabaseHelper.instance.insertHistorico(historico);
+    await DatabaseHelper.instance.insertHistorico(historico); // Inserta el fichaje en la base de datos local
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Guardado local solicitado.');
   }
 
@@ -18,7 +18,7 @@ class HistoricoService {
     String baseUrl,
     String nombreBD,
   ) async {
-    // Validación de parámetros antes de enviar (muy recomendable)
+    // Valida que la URL base sea correcta
     if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
@@ -26,9 +26,9 @@ class HistoricoService {
     print('--- ENTRA EN guardarFichajeRemoto ---');
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=301');
 
-    // Usamos el método del modelo para asegurar que el body tenga TODOS los campos necesarios
+    // Usa el método del modelo para asegurar que el body tenga TODOS los campos necesarios
     final body = historico.toPhpBody();
-    print('BODY ENVIADO: $body'); // Esto te ayuda a depurar
+    print('BODY ENVIADO: $body'); // Log para depuración
 
     final response = await http.post(
       url,
@@ -40,7 +40,7 @@ class HistoricoService {
     print('BODY RESPUESTA: ${response.body}');
     print('STATUS: ${response.statusCode}');
 
-    // Si la respuesta no es OK;... entonces lanza excepción (así nunca queda a medias)
+    // Si la respuesta no es OK, lanza excepción para que no quede a medias
     if (response.statusCode != 200 || !response.body.startsWith('OK')) {
       throw Exception('Error guardando fichaje en la nube: ${response.body}');
     }
@@ -60,6 +60,7 @@ class HistoricoService {
       ),
     );
     print('[DEBUG][HistoricoService.obtenerFichajesUsuario] Encontrados ${maps.length} registros para usuario=$usuario y empresa=$cifEmpresa');
+    // Convierte cada registro del mapa a un objeto Historico
     return maps.map((map) => Historico.fromMap(map)).toList();
   }
 }

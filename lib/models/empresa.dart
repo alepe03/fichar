@@ -1,12 +1,14 @@
+// Modelo de datos para una empresa
 class Empresa {
-  final String cifEmpresa;       // NOT NULL
-  final String nombre;           // NOT NULL
-  final String? direccion;       // Puede ser NULL
-  final String? telefono;        // Puede ser NULL
-  final String? codigoPostal;    // Puede ser NULL
-  final String? email;           // Puede ser NULL
-  final String? basedatos;       // Puede ser NULL
+  final String cifEmpresa;       // CIF de la empresa (obligatorio)
+  final String nombre;           // Nombre de la empresa (obligatorio)
+  final String? direccion;       // Dirección (opcional)
+  final String? telefono;        // Teléfono (opcional)
+  final String? codigoPostal;    // Código postal (opcional)
+  final String? email;           // Email (opcional)
+  final String? basedatos;       // Nombre de la base de datos (opcional)
 
+  // Constructor
   Empresa({
     required this.cifEmpresa,
     required this.nombre,
@@ -17,7 +19,7 @@ class Empresa {
     this.basedatos,
   });
 
-  // Desde SQLite/local DB
+  // Crea una empresa a partir de un mapa (por ejemplo, desde SQLite/local DB)
   factory Empresa.fromMap(Map<String, Object?> map) {
     return Empresa(
       cifEmpresa: map['cif_empresa']?.toString() ?? '',
@@ -30,7 +32,7 @@ class Empresa {
     );
   }
 
-  // Desde CSV/API
+  // Crea una empresa a partir de una línea CSV (separada por ;)
   factory Empresa.fromCsv(String line) {
     final parts = line.split(';');
     return Empresa(
@@ -44,6 +46,7 @@ class Empresa {
     );
   }
 
+  // Convierte la empresa a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
       'cif_empresa': cifEmpresa,

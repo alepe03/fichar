@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../config.dart'; // Importa la constante BASE_URLes es
-import '../services/empleado_service.dart';
-import '../services/sucursal_service.dart';
-import '../services/incidencia_service.dart';
+import '../config.dart'; // Importa la constante BASE_URL
+import '../services/empleado_service.dart';      // Servicio para empleados
+import '../services/sucursal_service.dart';      // Servicio para sucursales
+import '../services/incidencia_service.dart';    // Servicio para incidencias
 
 /// Pantalla para introducir el CIF de la empresa.
 class VCifScreen extends StatefulWidget {
@@ -25,7 +25,7 @@ class _VCifScreenState extends State<VCifScreen> {
   @override
   void initState() {
     super.initState();
-    _checkCifGuardado();
+    _checkCifGuardado(); // Comprueba si ya hay un CIF guardado al iniciar
   }
 
   /// Comprueba si ya hay un CIF guardado; si sí, salta al login directamente.
@@ -33,7 +33,7 @@ class _VCifScreenState extends State<VCifScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? VACif = prefs.getString('cif_empresa');
     if (VACif != null && VACif.isNotEmpty) {
-      _irALogin(context);
+      _irALogin(context); // Si hay CIF, va directo al login
     }
   }
 
@@ -46,30 +46,30 @@ class _VCifScreenState extends State<VCifScreen> {
     }
 
     setState(() {
-      vaIsLoading = true;
+      vaIsLoading = true; // Muestra el indicador de carga
       etiVCifError = null;
     });
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('cif_empresa', VACif);
+    await prefs.setString('cif_empresa', VACif); // Guarda el CIF
 
     try {
-      const token = '123456.abcd';
+      const token = '123456.abcd'; // Token fijo para la sincronización inicial
 
-      // Sincronización inicial usando la constante global BASE_URL
+      // Descarga y guarda empleados, sucursales e incidencias usando el CIF y el token
       await EmpleadoService.descargarYGuardarEmpleados(VACif, token, BASE_URL);
       await SucursalService.descargarYGuardarSucursales(VACif, token, BASE_URL);
       await IncidenciaService.descargarYGuardarIncidencias(VACif, token, BASE_URL);
 
-      _irALogin(context); // Solo si todo fue bien
+      _irALogin(context); // Si todo va bien, navega al login
     } catch (e, stacktrace) {
       print('ERROR descargando datos: $e');
       print('STACKTRACE: $stacktrace');
       setState(() {
-        etiVCifError = 'Error descargando datos: $e';
+        etiVCifError = 'Error descargando datos: $e'; // Muestra error si falla la descarga
       });
     } finally {
-      setState(() => vaIsLoading = false);
+      setState(() => vaIsLoading = false); // Oculta el indicador de carga
     }
   }
 
@@ -89,6 +89,7 @@ class _VCifScreenState extends State<VCifScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Campo de texto para el CIF
             TextField(
               controller: txtVCifCifEmpresa,
               decoration: InputDecoration(
@@ -99,6 +100,7 @@ class _VCifScreenState extends State<VCifScreen> {
               onSubmitted: (_) => _guardarCifYContinuar(),
             ),
             const SizedBox(height: 32),
+            // Botón de continuar o indicador de carga
             vaIsLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(

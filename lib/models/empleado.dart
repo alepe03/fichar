@@ -1,16 +1,18 @@
+// Modelo de datos para un empleado
 class Empleado {
-  final String usuario;
-  final String cifEmpresa;
-  final String? direccion;
-  final String? poblacion;
-  final String? codigoPostal;
-  final String? telefono;
-  final String? email;
-  final String? nombre;
-  final String? dni;
-  final String? rol;
-  final String? passwordHash;
+  final String usuario;         // Nombre de usuario
+  final String cifEmpresa;      // CIF de la empresa a la que pertenece
+  final String? direccion;      // Dirección del empleado (opcional)
+  final String? poblacion;      // Población (opcional)
+  final String? codigoPostal;   // Código postal (opcional)
+  final String? telefono;       // Teléfono (opcional)
+  final String? email;          // Email (opcional)
+  final String? nombre;         // Nombre completo (opcional)
+  final String? dni;            // DNI/NIF (opcional)
+  final String? rol;            // Rol del empleado (opcional)
+  final String? passwordHash;   // Hash de la contraseña (opcional)
 
+  // Constructor
   Empleado({
     required this.usuario,
     required this.cifEmpresa,
@@ -25,7 +27,7 @@ class Empleado {
     this.passwordHash,
   });
 
-  // Para cargar desde la API (CSV con ;)
+  // Crea un empleado a partir de una línea CSV (separada por ;)
   factory Empleado.fromCsv(String line) {
     final parts = line.split(';');
     return Empleado(
@@ -43,7 +45,7 @@ class Empleado {
     );
   }
 
-  // Para cargar desde SQLite/local DB
+  // Crea un empleado a partir de un mapa (por ejemplo, desde SQLite/local DB)
   factory Empleado.fromMap(Map<String, Object?> map) {
     return Empleado(
       usuario: map['usuario']?.toString() ?? '',
@@ -60,6 +62,7 @@ class Empleado {
     );
   }
 
+  // Convierte el empleado a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
       'usuario': usuario,

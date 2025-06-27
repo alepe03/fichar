@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'fichar_screen.dart';
 
+// Pantalla de login principal
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -11,34 +12,38 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  // Controladores para los campos de usuario y contraseña
   final TextEditingController txtVLoginUsuario = TextEditingController();
   final TextEditingController txtVLoginPassword = TextEditingController();
-  final _formKey = GlobalKey<FormState>();  
-  bool vaIsLoading = false;
-  bool vaObscurePassword = true;
-  bool vaRecordarUsuario = false;
-  String? vaErrorMessage;
+  final _formKey = GlobalKey<FormState>();  // Clave para el formulario
+  bool vaIsLoading = false;                 // Indica si está cargando
+  bool vaObscurePassword = true;            // Oculta o muestra la contraseña
+  bool vaRecordarUsuario = false;           // Checkbox para recordar usuario
+  String? vaErrorMessage;                   // Mensaje de error
 
   @override
   void dispose() {
+    // Libera los controladores cuando se destruye el widget
     txtVLoginUsuario.dispose();
     txtVLoginPassword.dispose();
     super.dispose();
   }
 
+  // Función que se ejecuta al pulsar el botón "Entrar"
   Future<void> btnVLoginEntrar() async {
-    FocusScope.of(context).unfocus();
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    FocusScope.of(context).unfocus(); // Quita el foco de los campos
+    if (!(_formKey.currentState?.validate() ?? false)) return; // Valida el formulario
 
     setState(() {
-      vaIsLoading = true;
-      vaErrorMessage = null;
+      vaIsLoading = true;    // Muestra el indicador de carga
+      vaErrorMessage = null; // Limpia el mensaje de error
     });
 
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final cifEmpresa = prefs.getString('cif_empresa') ?? '';
+    SharedPreferences prefs = await SharedPreferences.getInstance(); // Accede a preferencias
+    final cifEmpresa = prefs.getString('cif_empresa') ?? '';        // Obtiene el CIF guardado
 
     if (cifEmpresa.isEmpty) {
+      // Si no hay CIF, muestra error y termina
       setState(() {
         vaErrorMessage = "No se ha encontrado el CIF de la empresa. Vuelve a la pantalla anterior.";
         vaIsLoading = false;
@@ -46,43 +51,45 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Llama al servicio de autenticación local
     final empleado = await AuthService.loginLocal(
-      txtVLoginUsuario.text.trim(),
-      txtVLoginPassword.text,
-      cifEmpresa,
+      txtVLoginUsuario.text.trim(), // Usuario ingresado
+      txtVLoginPassword.text,       // Contraseña ingresada
+      cifEmpresa,                   // CIF de la empresa
     );
 
     if (empleado != null) {
-      // Guardar SIEMPRE los datos importantes del empleado
+      // Si el login es correcto, guarda los datos importantes del empleado
       await prefs.setString('usuario', empleado.usuario);
       await prefs.setString('nombre_empleado', empleado.nombre ?? '');
       await prefs.setString('dni_empleado', empleado.dni ?? '');
-      await prefs.setString('id_sucursal', ''); // O el valor real si lo tienes
+      await prefs.setString('id_sucursal', ''); // Puedes poner el valor real si lo tienes
       await prefs.setString('cif_empresa', empleado.cifEmpresa);
 
-      // --- NUEVO: Guardar token FIJO tras login ---
+      // Guarda un token fijo tras login (puedes cambiarlo por el real si tienes backend)
       await prefs.setString('token', '123456.abcd'); 
       print('[LOGIN] Token global guardado: 123456.abcd');
 
-      if (!mounted) return;
+      if (!mounted) return; // Verifica que el widget sigue en pantalla
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const FicharScreen()),
+        MaterialPageRoute(builder: (_) => const FicharScreen()), // Navega a la pantalla principal
       );
     } else {
+      // Si el login falla, muestra mensaje de error
       setState(() {
         vaErrorMessage = "Usuario o contraseña incorrectos.";
       });
     }
 
     setState(() {
-      vaIsLoading = false;
+      vaIsLoading = false; // Oculta el indicador de carga
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final double ancho = MediaQuery.of(context).size.width;
+    final double ancho = MediaQuery.of(context).size.width; // Ancho de pantalla
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -98,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SingleChildScrollView(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            width: ancho > 400 ? 400 : ancho * 0.95,
+            width: ancho > 400 ? 400 : ancho * 0.95, // Ancho máximo del formulario
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
@@ -111,10 +118,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
             child: Form(
-              key: _formKey,
+              key: _formKey, // Clave del formulario para validación
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Logo de la empresa
                   Image.asset(
                     'assets/images/iconotrivalle.png',
                     width: 100,
@@ -122,6 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 16),
+                  // Campo de usuario
                   TextFormField(
                     controller: txtVLoginUsuario,
                     decoration: const InputDecoration(
@@ -138,6 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !vaIsLoading,
                   ),
                   const SizedBox(height: 20),
+                  // Campo de contraseña
                   TextFormField(
                     controller: txtVLoginPassword,
                     decoration: InputDecoration(
@@ -150,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         onPressed: () {
                           setState(() {
-                            vaObscurePassword = !vaObscurePassword;
+                            vaObscurePassword = !vaObscurePassword; // Muestra/oculta contraseña
                           });
                         },
                       ),
@@ -165,6 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !vaIsLoading,
                   ),
                   const SizedBox(height: 12),
+                  // Checkbox para recordar usuario y botón de recuperar contraseña
                   Row(
                     children: [
                       Checkbox(
@@ -203,6 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
+                  // Mensaje de error si existe
                   if (vaErrorMessage != null) ...[
                     const SizedBox(height: 16),
                     Text(
@@ -211,12 +223,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                   const SizedBox(height: 32),
+                  // Botón de entrar o indicador de carga
                   vaIsLoading
                       ? const CircularProgressIndicator(color: Colors.blue)
                       : SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: btnVLoginEntrar,
+                            onPressed: btnVLoginEntrar, // Llama a la función de login
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue,
                               foregroundColor: Colors.white,

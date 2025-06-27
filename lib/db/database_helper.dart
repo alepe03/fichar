@@ -2,18 +2,21 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/historico.dart';
 
+// Clase singleton para manejar la base de datos local SQLite
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
+  static final DatabaseHelper instance = DatabaseHelper._init(); // Instancia única
   static Database? _database;
 
   DatabaseHelper._init();
 
+  // Devuelve la base de datos, la crea si no existe
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('fichador.db');
     return _database!;
   }
 
+  // Inicializa la base de datos en la ruta indicada
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
@@ -22,15 +25,16 @@ class DatabaseHelper {
     final db = await openDatabase(
       path,
       version: 1,
-      onCreate: _createDB,
+      onCreate: _createDB, // Llama a la función para crear las tablas
     );
     print('[DEBUG][DatabaseHelper] Base de datos abierta/cargada');
     return db;
   }
 
+  // Crea la estructura de tablas si no existen
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
-    // EMPLEADOS
+    // Tabla de empleados
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
         usuario TEXT NOT NULL,
@@ -48,7 +52,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // EMPRESAS
+    // Tabla de empresas
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empresas (
         cif_empresa TEXT PRIMARY KEY,
@@ -61,7 +65,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // SUCURSALES
+    // Tabla de sucursales
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sucursales (
         cif_empresa TEXT NOT NULL,
@@ -73,7 +77,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // INCIDENCIAS
+    // Tabla de incidencias
     await db.execute('''
       CREATE TABLE IF NOT EXISTS incidencias (
         codigo INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +86,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // HISTÓRICO (sin columna 'pendiente')
+    // Tabla de histórico de fichajes
     await db.execute('''
       CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

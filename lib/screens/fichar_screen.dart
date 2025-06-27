@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart'; // Importa la constante BASE_URL
-import '../models/historico.dart';
-import '../services/historico_service.dart';
+import '../models/historico.dart'; // Modelo de fichaje
+import '../services/historico_service.dart'; // Servicios para guardar fichajes
 
-// Utilidad: Fecha y hora en formato MySQL (YYYY-MM-DD HH:MM:SS)
+// Función utilidad: Devuelve la fecha y hora actual en formato MySQL (YYYY-MM-DD HH:MM:SS)
 String nowToMySQL() {
   final now = DateTime.now();
   return "${now.year.toString().padLeft(4, '0')}-"
@@ -16,6 +16,7 @@ String nowToMySQL() {
          "${now.second.toString().padLeft(2, '0')}";
 }
 
+// Pantalla principal para fichar (entrada, salida, incidencia)
 class FicharScreen extends StatefulWidget {
   const FicharScreen({Key? key}) : super(key: key);
 
@@ -24,9 +25,9 @@ class FicharScreen extends StatefulWidget {
 }
 
 class _FicharScreenState extends State<FicharScreen> {
-  final TextEditingController txtObservaciones = TextEditingController();
+  final TextEditingController txtObservaciones = TextEditingController(); // Observaciones para incidencias
 
-  // Configuración
+  // Variables de configuración y usuario
   late String cifEmpresa;
   late String token;
   late String usuario;
@@ -34,14 +35,15 @@ class _FicharScreenState extends State<FicharScreen> {
   late String dniEmpleado;      
   late String idSucursal;       
 
-  String vaUltimaAccion = '';
+  String vaUltimaAccion = ''; // Guarda la última acción realizada
 
   @override
   void initState() {
     super.initState();
-    _loadConfig();
+    _loadConfig(); // Carga la configuración y datos del usuario al iniciar
   }
 
+  // Carga los datos guardados en SharedPreferences
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -60,9 +62,11 @@ class _FicharScreenState extends State<FicharScreen> {
     print('[CONFIG] idSucursal: $idSucursal');
   }
 
+  // Registra un fichaje (entrada, salida o incidencia)
   Future<void> _registrarFichaje(String tipo, {String? observaciones}) async {
     final fechaActual = nowToMySQL();
 
+    // Crea el objeto historico con los datos del fichaje
     final historico = Historico(
       id: 0,
       cifEmpresa: cifEmpresa,
@@ -77,13 +81,13 @@ class _FicharScreenState extends State<FicharScreen> {
       idSucursal: idSucursal,
     );
 
-    // 1) Guarda local
+    // 1) Guarda el fichaje localmente
     print('VOY A GUARDAR LOCAL');
     print('DATOS A GUARDAR: ${historico.toMap()}');
     await HistoricoService.guardarFichajeLocal(historico);
     print('LOCAL GUARDADO');
 
-    // 2) Intenta guardar en nube
+    // 2) Intenta guardar el fichaje en la nube
     print('VOY A GUARDAR EN NUBE: $tipo');
     try {
       await HistoricoService.guardarFichajeRemoto(
@@ -103,12 +107,14 @@ class _FicharScreenState extends State<FicharScreen> {
       );
     }
 
-    setState(() => vaUltimaAccion = tipo);
+    setState(() => vaUltimaAccion = tipo); // Actualiza la última acción
   }
 
+  // Métodos para cada tipo de fichaje
   void _onEntrada() => _registrarFichaje('Entrada');
   void _onSalida()  => _registrarFichaje('Salida');
 
+  // Muestra un diálogo para registrar una incidencia
   void _onIncidencia() {
     showDialog(
       context: context,
@@ -129,6 +135,7 @@ class _FicharScreenState extends State<FicharScreen> {
                       style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 18),
+                    // Campo de texto para observaciones
                     TextField(
                       controller: txtObservaciones,
                       decoration: const InputDecoration(
@@ -137,6 +144,7 @@ class _FicharScreenState extends State<FicharScreen> {
                       ),
                       maxLines: 2,
                     ),
+                    // Checkbox de confirmación
                     CheckboxListTile(
                       value: confirmado,
                       onChanged: (v) => setStateDialog(() => confirmado = v ?? false),
@@ -146,6 +154,7 @@ class _FicharScreenState extends State<FicharScreen> {
                       contentPadding: EdgeInsets.zero,
                     ),
                     const SizedBox(height: 14),
+                    // Botones de cancelar y registrar
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -182,7 +191,7 @@ class _FicharScreenState extends State<FicharScreen> {
 
   @override
   void dispose() {
-    txtObservaciones.dispose();
+    txtObservaciones.dispose(); // Libera el controlador de texto
     super.dispose();
   }
 
@@ -214,7 +223,7 @@ class _FicharScreenState extends State<FicharScreen> {
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
               const SizedBox(height: 35),
 
-              // Entrada
+              // Botón de fichar entrada
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -226,7 +235,7 @@ class _FicharScreenState extends State<FicharScreen> {
               ),
               const SizedBox(height: 18),
 
-              // Salida
+              // Botón de fichar salida
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -238,7 +247,7 @@ class _FicharScreenState extends State<FicharScreen> {
               ),
               const SizedBox(height: 18),
 
-              // Incidencia
+              // Botón de registrar incidencia
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -255,6 +264,7 @@ class _FicharScreenState extends State<FicharScreen> {
               ),
               const SizedBox(height: 30),
 
+              // Muestra la última acción realizada si existe
               if (vaUltimaAccion.isNotEmpty)
                 Text(
                   'Última acción: $vaUltimaAccion',

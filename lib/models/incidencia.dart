@@ -1,15 +1,17 @@
+// Modelo de datos para una incidencia
 class Incidencia {
-  final int codigo;
-  final String? descripcion;
-  final String? cifEmpresa;
+  final int codigo;            // Código numérico de la incidencia
+  final String? descripcion;   // Descripción de la incidencia (opcional)
+  final String? cifEmpresa;    // CIF de la empresa (opcional)
 
+  // Constructor
   Incidencia({
     required this.codigo,
     this.descripcion,
     this.cifEmpresa,
   });
 
-  // Desde SQLite o Map (asegura robustez si algún campo viene null o vacío)
+  // Crea una incidencia a partir de un Map (por ejemplo, desde SQLite/local DB)
   factory Incidencia.fromMap(Map<String, Object?> map) {
     return Incidencia(
       codigo: int.tryParse(map['codigo']?.toString() ?? '') ?? 0,
@@ -18,7 +20,7 @@ class Incidencia {
     );
   }
 
-  // Desde CSV (de la API)
+  // Crea una incidencia a partir de una línea CSV (de la API)
   factory Incidencia.fromCsv(String line) {
     final parts = line.split(';');
     return Incidencia(
@@ -28,7 +30,7 @@ class Incidencia {
     );
   }
 
-  // Para guardar en SQLite
+  // Convierte la incidencia a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
       'codigo': codigo,
