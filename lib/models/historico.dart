@@ -11,6 +11,7 @@ class Historico {
   final String? nombreEmpleado;    // Nombre del empleado (opcional)
   final String? dniEmpleado;       // DNI del empleado (opcional)
   final String? idSucursal;        // ID de la sucursal (opcional)
+  final bool sincronizado;        // Indica si se envió a la nube
 
   // Constructor
   Historico({
@@ -25,6 +26,7 @@ class Historico {
     this.nombreEmpleado,
     this.dniEmpleado,
     this.idSucursal,
+    this.sincronizado = false,
   });
 
   /// Constructor desde Map de SQLite/local DB.
@@ -43,6 +45,7 @@ class Historico {
       nombreEmpleado: map['nombre_empleado']?.toString().isNotEmpty == true ? map['nombre_empleado']?.toString() : null,
       dniEmpleado: map['dni_empleado']?.toString().isNotEmpty == true ? map['dni_empleado']?.toString() : null,
       idSucursal: map['id_sucursal']?.toString().isNotEmpty == true ? map['id_sucursal']?.toString() : null,
+      sincronizado: map['sincronizado'] == 1,
     );
   }
 
@@ -61,6 +64,7 @@ class Historico {
       nombreEmpleado: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
       dniEmpleado: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
       idSucursal: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
+      sincronizado: true,
     );
   }
 
@@ -78,6 +82,7 @@ class Historico {
       'nombre_empleado'  : nombreEmpleado,
       'dni_empleado'     : dniEmpleado,
       'id_sucursal'      : idSucursal,
+      'sincronizado'     : sincronizado ? 1 : 0,
     };
   }
 
@@ -94,6 +99,7 @@ class Historico {
       'nombre_empleado'  : nombreEmpleado,
       'dni_empleado'     : dniEmpleado,
       'id_sucursal'      : idSucursal,
+      'sincronizado'     : sincronizado ? 1 : 0,
     };
   }
 }
