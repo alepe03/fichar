@@ -99,7 +99,8 @@ class DatabaseHelper {
         observaciones TEXT,
         nombre_empleado TEXT,
         dni_empleado TEXT,
-        id_sucursal TEXT
+        id_sucursal TEXT,
+        sincronizado INTEGER NOT NULL DEFAULT 0
       )
     ''');
     print('[DEBUG][DatabaseHelper] Tablas creadas (si no existían).');
@@ -114,5 +115,23 @@ class DatabaseHelper {
     final id = await db.insert('historico', row);
     print('[DEBUG][DatabaseHelper.insertHistorico] Nuevo ID insertado: $id');
     return id;
+  }
+
+  /// Actualiza el estado de sincronización de un fichaje.
+  Future<int> actualizarSincronizado(int id, bool sincronizado) async {
+    final db = await database;
+    return db.update(
+      'historico',
+      {'sincronizado': sincronizado ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Obtiene todos los fichajes aún no sincronizados.
+  Future<List<Historico>> historicosPendientes() async {
+    final db = await database;
+    final maps = await db.query('historico', where: 'sincronizado = 0');
+    return maps.map((m) => Historico.fromMap(m)).toList();
   }
 }

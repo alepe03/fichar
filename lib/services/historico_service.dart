@@ -5,14 +5,15 @@ import 'package:http/http.dart' as http;     // Para peticiones HTTP
 /// Servicio para gestionar el histórico de fichajes (local y remoto)
 class HistoricoService {
   /// Guarda un nuevo fichaje en la base de datos local SQLite.
-  static Future<void> guardarFichajeLocal(Historico historico) async {
+  static Future<int> guardarFichajeLocal(Historico historico) async {
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Intentando guardar: ${historico.toMap()}');
-    await DatabaseHelper.instance.insertHistorico(historico); // Inserta el fichaje en la base de datos local
-    print('[DEBUG][HistoricoService.guardarFichajeLocal] Guardado local solicitado.');
+    final id = await DatabaseHelper.instance.insertHistorico(historico);
+    print('[DEBUG][HistoricoService.guardarFichajeLocal] Guardado local solicitado con id $id.');
+    return id;
   }
 
   /// Guarda un fichaje en la nube (MySQL a través de PHP API)
-  static Future<void> guardarFichajeRemoto(
+  static Future<bool> guardarFichajeRemoto(
     Historico historico,
     String token,
     String baseUrl,
@@ -40,10 +41,10 @@ class HistoricoService {
     print('BODY RESPUESTA: ${response.body}');
     print('STATUS: ${response.statusCode}');
 
-    // Si la respuesta no es OK, lanza excepción para que no quede a medias
     if (response.statusCode != 200 || !response.body.startsWith('OK')) {
       throw Exception('Error guardando fichaje en la nube: ${response.body}');
     }
+    return true;
   }
 
   /// (Opcional) Obtener todos los fichajes de un usuario (local)
@@ -62,5 +63,22 @@ class HistoricoService {
     print('[DEBUG][HistoricoService.obtenerFichajesUsuario] Encontrados ${maps.length} registros para usuario=$usuario y empresa=$cifEmpresa');
     // Convierte cada registro del mapa a un objeto Historico
     return maps.map((map) => Historico.fromMap(map)).toList();
+  }
+
+  /// Sincroniza los fichajes pendientes guardados localmente.
+  static Future<void> sincronizarPendientes(
+    String token,
+    String baseUrl,
+    String nombreBD,
+  ) async {
+    final pendientes = await DatabaseHelper.instance.historicosPendientes();
+    for (final h in pendientes) {
+      try {
+        await guardarFichajeRemoto(h, token, baseUrl, nombreBD);
+        await DatabaseHelper.instance.actualizarSincronizado(h.id, true);
+      } catch (e) {
+        print('Error sincronizando id ${h.id}: $e');
+      }
+    }
   }
 }

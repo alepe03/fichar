@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart'; // Importa la constante BASE_URL
 import '../models/historico.dart'; // Modelo de fichaje
 import '../services/historico_service.dart'; // Servicios para guardar fichajes
+import '../db/database_helper.dart';
 
 // Función utilidad: Devuelve la fecha y hora actual en formato MySQL (YYYY-MM-DD HH:MM:SS)
 String nowToMySQL() {
@@ -60,6 +61,15 @@ class _FicharScreenState extends State<FicharScreen> {
     print('[CONFIG] nombreEmpleado: $nombreEmpleado');
     print('[CONFIG] dniEmpleado: $dniEmpleado');
     print('[CONFIG] idSucursal: $idSucursal');
+
+    // Intenta sincronizar fichajes pendientes en segundo plano
+    if (token.isNotEmpty) {
+      await HistoricoService.sincronizarPendientes(
+        token,
+        BASE_URL,
+        'qame400',
+      );
+    }
   }
 
   // Registra un fichaje (entrada, salida o incidencia)
@@ -84,7 +94,7 @@ class _FicharScreenState extends State<FicharScreen> {
     // 1) Guarda el fichaje localmente
     print('VOY A GUARDAR LOCAL');
     print('DATOS A GUARDAR: ${historico.toMap()}');
-    await HistoricoService.guardarFichajeLocal(historico);
+    final localId = await HistoricoService.guardarFichajeLocal(historico);
     print('LOCAL GUARDADO');
 
     // 2) Intenta guardar el fichaje en la nube
@@ -96,6 +106,7 @@ class _FicharScreenState extends State<FicharScreen> {
         BASE_URL,
         'qame400',
       );
+      await DatabaseHelper.instance.actualizarSincronizado(localId, true);
       print('GUARDADO REMOTO OK');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$tipo registrada (online)')),
