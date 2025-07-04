@@ -10,17 +10,22 @@ import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
 import 'login_screen.dart';
 
-// ----------------- PROVIDER -----------------
-class AdminProvider extends ChangeNotifier {
-  List<Empleado> empleados = [];
-  List<Historico> historicos = [];
-  List<Incidencia> incidencias = [];
+// Pantalla de administración principal con pestañas para usuarios, fichajes e incidencias
+// Usa Provider para gestionar el estado y la recarga de datos
 
-  final String cifEmpresa;
+// ----------------- PROVIDER -----------------
+// AdminProvider gestiona los datos y operaciones CRUD de empleados, fichajes e incidencias
+class AdminProvider extends ChangeNotifier {
+  List<Empleado> empleados = [];     // Lista de empleados cargados
+  List<Historico> historicos = [];   // Lista de fichajes cargados
+  List<Incidencia> incidencias = []; // Lista de incidencias cargadas
+
+  final String cifEmpresa;           // CIF de la empresa actual
 
   AdminProvider(this.cifEmpresa);
 
   // --- CARGA DATOS ---
+  // Carga empleados desde la base de datos local
   Future<void> cargarEmpleados() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -28,6 +33,7 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Carga fichajes desde la base de datos local
   Future<void> cargarHistoricos() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -35,12 +41,14 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Carga incidencias desde la base de datos local
   Future<void> cargarIncidencias() async {
     incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
     notifyListeners();
   }
 
   // --- CRUD EMPLEADOS ---
+  // Añade un empleado tanto en remoto como en local
   Future<String?> addEmpleado(Empleado empleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -55,7 +63,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // Ahora updateEmpleado recibe también el usuario original para localizar el registro correctamente
+  // Actualiza un empleado en local (requiere usuario original)
   Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
     final db = await DatabaseHelper.instance.database;
     await db.update(
@@ -68,6 +76,7 @@ class AdminProvider extends ChangeNotifier {
     return null;
   }
 
+  // Elimina un empleado tanto en remoto como en local
   Future<String?> deleteEmpleado(String usuario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -87,6 +96,7 @@ class AdminProvider extends ChangeNotifier {
   }
 
   // --- CRUD INCIDENCIAS ---
+  // Añade una incidencia tanto en remoto como en local
   Future<String?> addIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -104,6 +114,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  // Actualiza una incidencia tanto en remoto como en local
   Future<String?> updateIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -126,6 +137,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  // Elimina una incidencia tanto en remoto como en local
   Future<String?> deleteIncidencia(String codigo) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -150,6 +162,7 @@ class AdminProvider extends ChangeNotifier {
 }
 
 // ----------------- SCREEN PRINCIPAL -----------------
+// Pantalla principal con pestañas para Usuarios, Fichajes e Incidencias
 class AdminScreen extends StatefulWidget {
   final String cifEmpresa;
   const AdminScreen({Key? key, required this.cifEmpresa}) : super(key: key);
@@ -159,12 +172,14 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+  // Controlador de pestañas
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // Carga los datos al iniciar la pantalla
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<AdminProvider>(context, listen: false);
       provider.cargarEmpleados();
@@ -173,6 +188,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     });
   }
 
+  // Cierra sesión y vuelve a la pantalla de login
   void _logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -190,6 +206,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       appBar: AppBar(
         title: const Text('Panel de Administración'),
         actions: [
+          // Botón para cerrar sesión
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Salir',
@@ -205,6 +222,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ],
         ),
       ),
+      // Cuerpo con las tres pestañas
       body: TabBarView(
         controller: _tabController,
         children: const [
@@ -218,6 +236,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 }
 
 // ----------------- TAB USUARIOS -----------------
+// Pestaña para ver, añadir, editar y borrar empleados
 class UsuariosTab extends StatelessWidget {
   const UsuariosTab({Key? key}) : super(key: key);
 
@@ -450,6 +469,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
 }
 
 // ----------------- TAB FICHAJES -----------------
+// Pestaña para ver el histórico de fichajes de la empresa
 class FichajesTab extends StatelessWidget {
   const FichajesTab({Key? key}) : super(key: key);
 
@@ -476,6 +496,7 @@ class FichajesTab extends StatelessWidget {
 }
 
 // ----------------- TAB INCIDENCIAS -----------------
+// Pestaña para ver, añadir, editar y borrar incidencias
 class IncidenciasTab extends StatelessWidget {
   const IncidenciasTab({Key? key}) : super(key: key);
 

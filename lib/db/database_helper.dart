@@ -1,20 +1,23 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import '../models/historico.dart';
-import '../models/incidencia.dart';
+import 'package:sqflite/sqflite.dart';        
+import 'package:path/path.dart';                
+import '../models/historico.dart';              
+import '../models/incidencia.dart';            
 
+// Clase singleton para manejar la base de datos local SQLite
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
+  static final DatabaseHelper instance = DatabaseHelper._init(); // Instancia única (singleton)
   static Database? _database;
 
   DatabaseHelper._init();
 
+  // Devuelve la base de datos, la crea si no existe
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('fichador.db');
     return _database!;
   }
 
+  // Inicializa la base de datos en la ruta indicada
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
@@ -23,12 +26,13 @@ class DatabaseHelper {
     final db = await openDatabase(
       path,
       version: 1,
-      onCreate: _createDB,
+      onCreate: _createDB, // Llama a la función para crear las tablas
     );
     print('[DEBUG][DatabaseHelper] Base de datos abierta/cargada');
     return db;
   }
 
+  // Crea la estructura de tablas si no existen
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
 

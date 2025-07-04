@@ -1,6 +1,6 @@
-import '../models/historico.dart';           // Modelo de fichaje/histórico
-import '../db/database_helper.dart';         // Helper para la base de datos local
-import 'package:http/http.dart' as http;     // Para peticiones HTTP
+import '../models/historico.dart';           
+import '../db/database_helper.dart';         
+import 'package:http/http.dart' as http;    
 
 /// Servicio para gestionar el histórico de fichajes (local y remoto)
 class HistoricoService {

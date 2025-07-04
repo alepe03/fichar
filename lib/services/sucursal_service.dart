@@ -1,7 +1,7 @@
-import 'package:http/http.dart' as http;           // Para hacer peticiones HTTP
-import '../models/sucursal.dart';                   // Modelo de sucursal
-import '../db/database_helper.dart';                // Helper para la base de datos local
-import 'package:sqflite/sqflite.dart';             // Para operaciones con SQLite
+import 'package:http/http.dart' as http;          
+import '../models/sucursal.dart';                   
+import '../db/database_helper.dart';                
+import 'package:sqflite/sqflite.dart';            
 
 // Servicio para descargar y guardar sucursales
 class SucursalService {

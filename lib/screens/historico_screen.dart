@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../models/historico.dart';
 import '../services/historico_service.dart';
 
+// Pantalla para mostrar el histórico de fichajes de un usuario concreto
 class HistoricoScreen extends StatefulWidget {
-  final String usuario;
-  final String cifEmpresa;
+  final String usuario;      // Usuario del que se muestran los fichajes
+  final String cifEmpresa;   // CIF de la empresa
+
   const HistoricoScreen({Key? key, required this.usuario, required this.cifEmpresa}) : super(key: key);
 
   @override
@@ -12,19 +14,20 @@ class HistoricoScreen extends StatefulWidget {
 }
 
 class _HistoricoScreenState extends State<HistoricoScreen> {
-  List<Historico> registros = [];
-  bool cargando = true;
-  String? errorMsg;
+  List<Historico> registros = []; // Lista de fichajes filtrados
+  bool cargando = true;           // Estado de carga
+  String? errorMsg;               // Mensaje de error si ocurre
 
-  int _selectedYear = DateTime.now().year;
-  int _selectedMonth = DateTime.now().month;
+  int _selectedYear = DateTime.now().year;   // Año seleccionado para filtrar
+  int _selectedMonth = DateTime.now().month; // Mes seleccionado para filtrar
 
   @override
   void initState() {
     super.initState();
-    _cargarRegistros();
+    _cargarRegistros(); // Carga los registros al iniciar la pantalla
   }
 
+  // Carga los fichajes del usuario y los filtra por año y mes seleccionados
   Future<void> _cargarRegistros() async {
     setState(() {
       cargando = true;
@@ -44,7 +47,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         return dt != null && dt.year == _selectedYear && dt.month == _selectedMonth;
       }).toList();
 
-      // Ordenar registros por fecha relevante descendente (más reciente primero)
+      // Ordena los registros por fecha relevante descendente (más reciente primero)
       registros.sort((a, b) {
         final fechaA = (a.tipo == 'Salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
         final fechaB = (b.tipo == 'Salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
@@ -60,6 +63,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     });
   }
 
+  // Construye la lista de años para el filtro
   List<DropdownMenuItem<int>> _buildYears() {
     final now = DateTime.now();
     final years = List.generate(6, (i) => now.year - i);
@@ -71,6 +75,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         .toList();
   }
 
+  // Construye la lista de meses para el filtro
   List<DropdownMenuItem<int>> _buildMonths() {
     return List.generate(12, (i) => i + 1)
         .map((m) => DropdownMenuItem<int>(
@@ -84,8 +89,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text("Mi histórico", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+        title: const Text("Mi histórico", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.blue),
         elevation: 1,
@@ -95,7 +99,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filtros año y mes
+            // Filtros de año y mes
             Row(
               children: [
                 const Text("Año:", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -122,6 +126,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
               ],
             ),
             const Divider(),
+            // Muestra el estado de carga, error o la lista de fichajes
             if (cargando)
               const Center(child: CircularProgressIndicator()),
             if (!cargando && errorMsg != null)
@@ -135,6 +140,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                         separatorBuilder: (_, __) => const Divider(),
                         itemBuilder: (_, i) {
                           final h = registros[i];
+                          // Cada ficha muestra el tipo, fecha y detalles de la incidencia/observaciones si existen
                           return ListTile(
                             leading: Icon(
                               h.tipo == 'Entrada'
