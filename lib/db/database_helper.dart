@@ -1,22 +1,20 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/historico.dart';
+import '../models/incidencia.dart';
 
-// Clase singleton para manejar la base de datos local SQLite
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init(); // Instancia única
+  static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
   DatabaseHelper._init();
 
-  // Devuelve la base de datos, la crea si no existe
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('fichador.db');
     return _database!;
   }
 
-  // Inicializa la base de datos en la ruta indicada
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
@@ -25,15 +23,15 @@ class DatabaseHelper {
     final db = await openDatabase(
       path,
       version: 1,
-      onCreate: _createDB, // Llama a la función para crear las tablas
+      onCreate: _createDB,
     );
     print('[DEBUG][DatabaseHelper] Base de datos abierta/cargada');
     return db;
   }
 
-  // Crea la estructura de tablas si no existen
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
+
     // Tabla de empleados
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
@@ -77,10 +75,11 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de incidencias
+    // Tabla de incidencias: limpia, como TEXT PRIMARY KEY
+    await db.execute('DROP TABLE IF EXISTS incidencias;');
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS incidencias (
-        codigo INTEGER PRIMARY KEY AUTOINCREMENT,
+      CREATE TABLE incidencias (
+        codigo TEXT PRIMARY KEY,
         descripcion TEXT,
         cif_empresa TEXT
       )
@@ -95,7 +94,7 @@ class DatabaseHelper {
         fecha_entrada TEXT NOT NULL,
         fecha_salida TEXT,
         tipo TEXT,
-        incidencia_codigo INTEGER,
+        incidencia_codigo TEXT,
         observaciones TEXT,
         nombre_empleado TEXT,
         dni_empleado TEXT,
@@ -103,11 +102,11 @@ class DatabaseHelper {
         sincronizado INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
     print('[DEBUG][DatabaseHelper] Tablas creadas (si no existían).');
   }
 
-  /// Inserta un registro en 'historico', devuelve el ID local (autoincremental).
-  /// Usa el mapa sin 'id' que genera `Historico.toDbMap()`.
+  // -- Insertar fichaje histórico --
   Future<int> insertHistorico(Historico h) async {
     final db = await database;
     final row = h.toDbMap();
@@ -117,7 +116,7 @@ class DatabaseHelper {
     return id;
   }
 
-  /// Actualiza el estado de sincronización de un fichaje.
+  // -- Actualizar sincronización --
   Future<int> actualizarSincronizado(int id, bool sincronizado) async {
     final db = await database;
     return db.update(
@@ -128,10 +127,21 @@ class DatabaseHelper {
     );
   }
 
-  /// Obtiene todos los fichajes aún no sincronizados.
+  // -- Históricos pendientes --
   Future<List<Historico>> historicosPendientes() async {
     final db = await database;
     final maps = await db.query('historico', where: 'sincronizado = 0');
     return maps.map((m) => Historico.fromMap(m)).toList();
+  }
+
+  // -- Cargar incidencias locales por empresa --
+  Future<List<Incidencia>> cargarIncidenciasLocal(String cifEmpresa) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'incidencias',
+      where: 'cif_empresa = ?',
+      whereArgs: [cifEmpresa],
+    );
+    return maps.map((m) => Incidencia.fromMap(m)).toList();
   }
 }

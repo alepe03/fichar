@@ -1,8 +1,8 @@
-// Modelo de datos para una incidencia
+// Modelo de datos para una incidencia (alineado con backend)
 class Incidencia {
-  final int codigo;            // Código numérico de la incidencia
-  final String? descripcion;   // Descripción de la incidencia (opcional)
-  final String? cifEmpresa;    // CIF de la empresa (opcional)
+  final String codigo;           // Código de la incidencia (varchar en BBDD)
+  final String? descripcion;     // Descripción (opcional)
+  final String? cifEmpresa;      // CIF empresa (opcional)
 
   // Constructor
   Incidencia({
@@ -11,12 +11,16 @@ class Incidencia {
     this.cifEmpresa,
   });
 
-  // Crea una incidencia a partir de un Map (por ejemplo, desde SQLite/local DB)
+  // Crea una incidencia a partir de un Map (SQLite/local DB)
   factory Incidencia.fromMap(Map<String, Object?> map) {
     return Incidencia(
-      codigo: int.tryParse(map['codigo']?.toString() ?? '') ?? 0,
-      descripcion: map['descripcion']?.toString().isNotEmpty == true ? map['descripcion']?.toString() : null,
-      cifEmpresa: map['cif_empresa']?.toString().isNotEmpty == true ? map['cif_empresa']?.toString() : null,
+      codigo: map['codigo']?.toString() ?? '',
+      descripcion: (map['descripcion']?.toString().isNotEmpty ?? false)
+          ? map['descripcion']?.toString()
+          : null,
+      cifEmpresa: (map['cif_empresa']?.toString().isNotEmpty ?? false)
+          ? map['cif_empresa']?.toString()
+          : null,
     );
   }
 
@@ -24,13 +28,13 @@ class Incidencia {
   factory Incidencia.fromCsv(String line) {
     final parts = line.split(';');
     return Incidencia(
-      codigo: parts.length > 0 && parts[0].isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0,
+      codigo: parts.isNotEmpty ? parts[0] : '',
       descripcion: parts.length > 1 && parts[1].isNotEmpty ? parts[1] : null,
       cifEmpresa: parts.length > 2 && parts[2].isNotEmpty ? parts[2] : null,
     );
   }
 
-  // Convierte la incidencia a un mapa (para guardar en base de datos)
+  // Convierte la incidencia a un mapa (para guardar en base de datos local)
   Map<String, dynamic> toMap() {
     return {
       'codigo': codigo,
@@ -38,4 +42,7 @@ class Incidencia {
       'cif_empresa': cifEmpresa,
     };
   }
+
+  @override
+  String toString() => 'Incidencia($codigo, $descripcion, $cifEmpresa)';
 }

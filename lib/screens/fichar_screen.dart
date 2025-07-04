@@ -1,23 +1,25 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config.dart'; // Importa la constante BASE_URL
-import '../models/historico.dart'; // Modelo de fichaje
-import '../services/historico_service.dart'; // Servicios para guardar fichajes
-import '../db/database_helper.dart';
+import '../config.dart';
+import '../models/historico.dart';
+import '../models/incidencia.dart';
+import '../services/historico_service.dart';
+import '../services/incidencia_service.dart';
+import 'login_screen.dart';
+import 'historico_screen.dart';
 
-// Función utilidad: Devuelve la fecha y hora actual en formato MySQL (YYYY-MM-DD HH:MM:SS)
 String nowToMySQL() {
   final now = DateTime.now();
   return "${now.year.toString().padLeft(4, '0')}-"
-         "${now.month.toString().padLeft(2, '0')}-"
-         "${now.day.toString().padLeft(2, '0')} "
-         "${now.hour.toString().padLeft(2, '0')}:"
-         "${now.minute.toString().padLeft(2, '0')}:"
-         "${now.second.toString().padLeft(2, '0')}";
+      "${now.month.toString().padLeft(2, '0')}-"
+      "${now.day.toString().padLeft(2, '0')} "
+      "${now.hour.toString().padLeft(2, '0')}:"
+      "${now.minute.toString().padLeft(2, '0')}:"
+      "${now.second.toString().padLeft(2, '0')}";
 }
 
-// Pantalla principal para fichar (entrada, salida, incidencia)
 class FicharScreen extends StatefulWidget {
   const FicharScreen({Key? key}) : super(key: key);
 
@@ -26,25 +28,34 @@ class FicharScreen extends StatefulWidget {
 }
 
 class _FicharScreenState extends State<FicharScreen> {
-  final TextEditingController txtObservaciones = TextEditingController(); // Observaciones para incidencias
+  final TextEditingController txtObservaciones = TextEditingController();
 
-  // Variables de configuración y usuario
+  bool entradaHabilitada = true;
+  bool salidaHabilitada = true;
+
   late String cifEmpresa;
   late String token;
   late String usuario;
-  late String nombreEmpleado;   
-  late String dniEmpleado;      
-  late String idSucursal;       
+  late String nombreEmpleado;
+  late String dniEmpleado;
+  late String idSucursal;
+  String vaUltimaAccion = '';
 
-  String vaUltimaAccion = ''; // Guarda la última acción realizada
+  Timer? _timer;
+  Duration _tiempoTrabajado = Duration.zero;
+  DateTime? _horaEntrada;
+
+  // --- Lógica incidencias
+  List<Incidencia> listaIncidencias = [];
+  bool cargandoIncidencias = false;
+  String? errorIncidencias;
 
   @override
   void initState() {
     super.initState();
-    _loadConfig(); // Carga la configuración y datos del usuario al iniciar
+    _loadConfig();
   }
 
-  // Carga los datos guardados en SharedPreferences
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -54,29 +65,79 @@ class _FicharScreenState extends State<FicharScreen> {
       nombreEmpleado = prefs.getString('nombre_empleado') ?? '';
       dniEmpleado    = prefs.getString('dni_empleado')    ?? '';
       idSucursal     = prefs.getString('id_sucursal')     ?? '';
+      vaUltimaAccion = prefs.getString('ultimo_tipo_fichaje') ?? '';
+      String? horaEntradaStr = prefs.getString('hora_entrada');
+      if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
+        _horaEntrada = DateTime.tryParse(horaEntradaStr);
+      } else {
+        _horaEntrada = null;
+      }
     });
-    print('[CONFIG] cifEmpresa: $cifEmpresa');
-    print('[CONFIG] token: $token');
-    print('[CONFIG] usuario: $usuario');
-    print('[CONFIG] nombreEmpleado: $nombreEmpleado');
-    print('[CONFIG] dniEmpleado: $dniEmpleado');
-    print('[CONFIG] idSucursal: $idSucursal');
+    _calcularEstadoBotones();
+    _initTemporizador();
+  }
 
-    // Intenta sincronizar fichajes pendientes en segundo plano
-    if (token.isNotEmpty) {
-      await HistoricoService.sincronizarPendientes(
-        token,
-        BASE_URL,
-        'qame400',
-      );
+  void _calcularEstadoBotones() {
+    setState(() {
+      if (vaUltimaAccion == 'Entrada') {
+        entradaHabilitada = false;
+        salidaHabilitada = true;
+      } else if (vaUltimaAccion == 'Salida') {
+        entradaHabilitada = true;
+        salidaHabilitada = false;
+      } else {
+        entradaHabilitada = true;
+        salidaHabilitada = true;
+      }
+    });
+  }
+
+  void _initTemporizador() {
+    _timer?.cancel();
+    if (vaUltimaAccion == 'Entrada' && _horaEntrada != null) {
+      _actualizaTiempoTrabajado();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _actualizaTiempoTrabajado();
+      });
+    } else {
+      setState(() {
+        _tiempoTrabajado = Duration.zero;
+      });
     }
   }
 
-  // Registra un fichaje (entrada, salida o incidencia)
-  Future<void> _registrarFichaje(String tipo, {String? observaciones}) async {
-    final fechaActual = nowToMySQL();
+  void _actualizaTiempoTrabajado() {
+    if (_horaEntrada == null) return;
+    final ahora = DateTime.now();
+    setState(() {
+      _tiempoTrabajado = ahora.difference(_horaEntrada!);
+    });
+  }
 
-    // Crea el objeto historico con los datos del fichaje
+  Future<void> _setUltimaAccion(String tipo, {DateTime? horaEntrada}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ultimo_tipo_fichaje', tipo);
+    if (tipo == 'Entrada' && horaEntrada != null) {
+      await prefs.setString('hora_entrada', horaEntrada.toIso8601String());
+      _horaEntrada = horaEntrada;
+    }
+    if (tipo == 'Salida' || tipo == 'Incidencia') {
+      await prefs.remove('hora_entrada');
+      _horaEntrada = null;
+    }
+    setState(() => vaUltimaAccion = tipo);
+    _calcularEstadoBotones();
+    _initTemporizador();
+  }
+
+  Future<void> _registrarFichaje(
+    String tipo, {
+    String? incidenciaCodigo,
+    String? observaciones,
+  }) async {
+    final fechaActual = nowToMySQL();
+    final ahora = DateTime.now();
+
     final historico = Historico(
       id: 0,
       cifEmpresa: cifEmpresa,
@@ -84,21 +145,15 @@ class _FicharScreenState extends State<FicharScreen> {
       fechaEntrada: tipo == 'Salida' ? '' : fechaActual,
       fechaSalida: tipo == 'Salida' ? fechaActual : null,
       tipo: tipo,
-      incidenciaCodigo: null,
+      incidenciaCodigo: incidenciaCodigo,
       observaciones: observaciones,
       nombreEmpleado: nombreEmpleado,
       dniEmpleado: dniEmpleado,
       idSucursal: idSucursal,
     );
 
-    // 1) Guarda el fichaje localmente
-    print('VOY A GUARDAR LOCAL');
-    print('DATOS A GUARDAR: ${historico.toMap()}');
-    final localId = await HistoricoService.guardarFichajeLocal(historico);
-    print('LOCAL GUARDADO');
+    await HistoricoService.guardarFichajeLocal(historico);
 
-    // 2) Intenta guardar el fichaje en la nube
-    print('VOY A GUARDAR EN NUBE: $tipo');
     try {
       await HistoricoService.guardarFichajeRemoto(
         historico,
@@ -106,31 +161,53 @@ class _FicharScreenState extends State<FicharScreen> {
         BASE_URL,
         'qame400',
       );
-      await DatabaseHelper.instance.actualizarSincronizado(localId, true);
-      print('GUARDADO REMOTO OK');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$tipo registrada (online)')),
       );
     } catch (e) {
-      print('ERROR AL GUARDAR EN NUBE: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$tipo guardada localmente')),
       );
     }
 
-    setState(() => vaUltimaAccion = tipo); // Actualiza la última acción
+    if (tipo == 'Entrada') {
+      await _setUltimaAccion(tipo, horaEntrada: ahora);
+    } else {
+      await _setUltimaAccion(tipo);
+    }
   }
 
-  // Métodos para cada tipo de fichaje
   void _onEntrada() => _registrarFichaje('Entrada');
   void _onSalida()  => _registrarFichaje('Salida');
 
-  // Muestra un diálogo para registrar una incidencia
-  void _onIncidencia() {
+  // --- Diálogo con combo incidencias y lógica solo BBDD ---
+  Future<void> _cargarIncidencias() async {
+    setState(() { cargandoIncidencias = true; errorIncidencias = null; });
+    try {
+      await IncidenciaService.descargarYGuardarIncidencias(cifEmpresa, token, BASE_URL);
+      listaIncidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
+    } catch (e) {
+      try {
+        listaIncidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
+        errorIncidencias = 'Mostrando incidencias offline';
+      } catch (_) {
+        listaIncidencias = [];
+        errorIncidencias = 'No se pueden cargar incidencias.';
+      }
+    }
+    setState(() { cargandoIncidencias = false; });
+  }
+
+  // --------------- BLOQUE MODIFICADO A PARTIR DE AQUÍ ---------------------
+  void _onIncidencia() async {
+    await _cargarIncidencias();
+    txtObservaciones.clear();
+    Incidencia? seleccionada;
+    bool confirmado = false;
+
     showDialog(
       context: context,
       builder: (_) {
-        bool confirmado = false;
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return Dialog(
@@ -138,59 +215,112 @@ class _FicharScreenState extends State<FicharScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Registrar incidencia',
-                      style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 18),
-                    // Campo de texto para observaciones
-                    TextField(
-                      controller: txtObservaciones,
-                      decoration: const InputDecoration(
-                        labelText: 'Observaciones',
-                        border: OutlineInputBorder(),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Registrar incidencia',
+                        style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
                       ),
-                      maxLines: 2,
-                    ),
-                    // Checkbox de confirmación
-                    CheckboxListTile(
-                      value: confirmado,
-                      onChanged: (v) => setStateDialog(() => confirmado = v ?? false),
-                      title: const Text('Confirmo la incidencia'),
-                      activeColor: Colors.blue,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    const SizedBox(height: 14),
-                    // Botones de cancelar y registrar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton(
-                          child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
-                          onPressed: () => Navigator.pop(ctx),
+                      const SizedBox(height: 18),
+                      cargandoIncidencias
+                          ? const CircularProgressIndicator()
+                          : DropdownButtonFormField<Incidencia>(
+                              value: seleccionada,
+                              items: listaIncidencias.map((inc) => DropdownMenuItem(
+                                value: inc,
+                                child: Text(inc.descripcion ?? inc.codigo),
+                              )).toList(),
+                              onChanged: (valor) => setStateDialog(() => seleccionada = valor),
+                              decoration: const InputDecoration(
+                                labelText: 'Tipo de incidencia',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                      if (errorIncidencias != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(errorIncidencias!, style: const TextStyle(color: Colors.orange)),
                         ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                      const SizedBox(height: 18),
+                      TextField(
+                        controller: txtObservaciones,
+                        decoration: const InputDecoration(
+                          labelText: 'Observaciones (opcional)',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 2,
+                      ),
+                      CheckboxListTile(
+                        value: confirmado,
+                        onChanged: (v) => setStateDialog(() => confirmado = v ?? false),
+                        title: const Text('Confirmo la incidencia'),
+                        activeColor: Colors.blue,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      const SizedBox(height: 14),
+                      // ---- BOTONES EN WRAP (NO ROW) ----
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 8.0,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          TextButton(
+                            child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
+                            onPressed: () => Navigator.pop(ctx),
                           ),
-                          child: const Text('Registrar'),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _registrarFichaje(
-                              'Incidencia',
-                              observaciones: txtObservaciones.text.trim(),
-                            );
-                          },
-                        ),
-                      ],
-                    )
-                  ],
+                          ElevatedButton(
+                            child: const Text('Registrar solo incidencia'),
+                            onPressed: (seleccionada != null && confirmado)
+                                ? () {
+                                    Navigator.pop(ctx);
+                                    _registrarFichaje(
+                                      'Incidencia',
+                                      incidenciaCodigo: seleccionada!.codigo,
+                                      observaciones: txtObservaciones.text.trim(),
+                                    );
+                                  }
+                                : null,
+                          ),
+                          // -------- Botón "Registrar y salir" solo si está dentro --------
+                          if (vaUltimaAccion == 'Entrada')
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                              child: const Text('Registrar y salir'),
+                              onPressed: (seleccionada != null && confirmado)
+                                  ? () async {
+                                      Navigator.pop(ctx);
+                                      await _registrarFichaje(
+                                        'Incidencia',
+                                        incidenciaCodigo: seleccionada!.codigo,
+                                        observaciones: txtObservaciones.text.trim(),
+                                      );
+                                      await _registrarFichaje('Salida');
+                                    }
+                                  : null,
+                            ),
+                          // -------- Botón "Registrar y entrar" solo si está fuera --------
+                          if (vaUltimaAccion != 'Entrada')
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                              child: const Text('Registrar y entrar'),
+                              onPressed: (seleccionada != null && confirmado)
+                                  ? () async {
+                                      Navigator.pop(ctx);
+                                      await _registrarFichaje(
+                                        'Incidencia',
+                                        incidenciaCodigo: seleccionada!.codigo,
+                                        observaciones: txtObservaciones.text.trim(),
+                                      );
+                                      await _registrarFichaje('Entrada');
+                                    }
+                                  : null,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -199,10 +329,31 @@ class _FicharScreenState extends State<FicharScreen> {
       },
     );
   }
+  // --------------- FIN DEL BLOQUE MODIFICADO ---------------------
+
+  Widget _temporizadorWidget() {
+    if (vaUltimaAccion != 'Entrada' || _horaEntrada == null) return const SizedBox.shrink();
+    String dosCifras(int n) => n.toString().padLeft(2, '0');
+    final horas = dosCifras(_tiempoTrabajado.inHours);
+    final minutos = dosCifras(_tiempoTrabajado.inMinutes.remainder(60));
+    final segundos = dosCifras(_tiempoTrabajado.inSeconds.remainder(60));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        children: [
+          const Text("Tiempo trabajado hoy:",
+              style: TextStyle(fontSize: 17, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+          Text("$horas:$minutos:$segundos",
+              style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 2)),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
-    txtObservaciones.dispose(); // Libera el controlador de texto
+    txtObservaciones.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -211,6 +362,18 @@ class _FicharScreenState extends State<FicharScreen> {
     final ancho = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.blue),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            }
+          },
+        ),
         title: const Text('Fichar', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -232,33 +395,32 @@ class _FicharScreenState extends State<FicharScreen> {
               const SizedBox(height: 10),
               const Text('¿Qué quieres hacer?',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
-              const SizedBox(height: 35),
+              const SizedBox(height: 15),
+              _temporizadorWidget(),
+              const SizedBox(height: 20),
 
-              // Botón de fichar entrada
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.login),
                   label: const Text('Fichar entrada'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: _onEntrada,
+                  onPressed: entradaHabilitada ? _onEntrada : null,
                 ),
               ),
               const SizedBox(height: 18),
 
-              // Botón de fichar salida
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Fichar salida'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: _onSalida,
+                  onPressed: salidaHabilitada ? _onSalida : null,
                 ),
               ),
               const SizedBox(height: 18),
 
-              // Botón de registrar incidencia
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -273,9 +435,34 @@ class _FicharScreenState extends State<FicharScreen> {
                   onPressed: _onIncidencia,
                 ),
               ),
+              const SizedBox(height: 18),
+
+              // ------ BOTÓN VER HISTÓRICO -------
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.history, color: Colors.blue),
+                  label: const Text('Ver mis fichajes', style: TextStyle(color: Colors.blue)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.blue, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HistoricoScreen(
+                          usuario: usuario,
+                          cifEmpresa: cifEmpresa,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
               const SizedBox(height: 30),
 
-              // Muestra la última acción realizada si existe
               if (vaUltimaAccion.isNotEmpty)
                 Text(
                   'Última acción: $vaUltimaAccion',

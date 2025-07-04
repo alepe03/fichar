@@ -1,4 +1,6 @@
-// Modelo de datos para un fichaje/histórico
+// Modelo de datos para un fichaje/histórico (totalmente compatible con la API y SQLite)
+// Senior style: string para códigos, máxima interoperabilidad y documentación clara
+
 class Historico {
   final int id;                    // ID en la base de datos local
   final String? cifEmpresa;        // CIF de la empresa
@@ -6,14 +8,14 @@ class Historico {
   final String fechaEntrada;       // Fecha/hora de entrada (siempre tiene valor)
   final String? fechaSalida;       // Fecha/hora de salida (opcional)
   final String? tipo;              // Tipo de fichaje (Entrada, Salida, Incidencia)
-  final int? incidenciaCodigo;     // Código de incidencia (solo local)
+  final String? incidenciaCodigo;  // Código de incidencia (String, tipo "IN001" o "RETARDO")
   final String? observaciones;     // Observaciones (opcional)
   final String? nombreEmpleado;    // Nombre del empleado (opcional)
   final String? dniEmpleado;       // DNI del empleado (opcional)
   final String? idSucursal;        // ID de la sucursal (opcional)
-  final bool sincronizado;        // Indica si se envió a la nube
+  final bool sincronizado;         // Indica si se envió a la nube
 
-  // Constructor
+  // Constructor principal
   Historico({
     required this.id,
     required this.fechaEntrada,
@@ -29,7 +31,7 @@ class Historico {
     this.sincronizado = false,
   });
 
-  /// Constructor desde Map de SQLite/local DB.
+  /// Constructor desde Map (SQLite/local DB)
   factory Historico.fromMap(Map<String, Object?> map) {
     return Historico(
       id: int.tryParse(map['id']?.toString() ?? '') ?? 0,
@@ -38,8 +40,8 @@ class Historico {
       fechaEntrada: map['fecha_entrada']?.toString() ?? '',
       fechaSalida: map['fecha_salida']?.toString().isNotEmpty == true ? map['fecha_salida']?.toString() : null,
       tipo: map['tipo']?.toString().isNotEmpty == true ? map['tipo']?.toString() : null,
-      incidenciaCodigo: map['incidencia_codigo'] != null && map['incidencia_codigo'].toString().isNotEmpty
-          ? int.tryParse(map['incidencia_codigo'].toString())
+      incidenciaCodigo: map['incidencia_codigo']?.toString().isNotEmpty == true
+          ? map['incidencia_codigo']?.toString()
           : null,
       observaciones: map['observaciones']?.toString().isNotEmpty == true ? map['observaciones']?.toString() : null,
       nombreEmpleado: map['nombre_empleado']?.toString().isNotEmpty == true ? map['nombre_empleado']?.toString() : null,
@@ -49,7 +51,7 @@ class Historico {
     );
   }
 
-  /// Constructor desde CSV (si lo usas para importación).
+  /// Constructor desde CSV (por si lo usas para importación)
   factory Historico.fromCsv(String line) {
     final parts = line.split(';');
     return Historico(
@@ -59,7 +61,7 @@ class Historico {
       fechaEntrada: parts.length > 3 ? parts[3] : '',
       fechaSalida: parts.length > 4 && parts[4].isNotEmpty ? parts[4] : null,
       tipo: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null,
-      incidenciaCodigo: parts.length > 6 && parts[6].isNotEmpty ? int.tryParse(parts[6]) : null,
+      incidenciaCodigo: parts.length > 6 && parts[6].isNotEmpty ? parts[6] : null,
       observaciones: parts.length > 7 && parts[7].isNotEmpty ? parts[7] : null,
       nombreEmpleado: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
       dniEmpleado: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
@@ -105,9 +107,8 @@ class Historico {
 }
 
 /// Extensión: Para enviar a PHP solo los campos requeridos.
-/// NO envía incidencia_codigo (no lo usas en la nube).
 extension HistoricoPhp on Historico {
-  // Convierte el fichaje a un mapa solo con los campos necesarios para la API PHP
+  /// Convierte el fichaje a un mapa solo con los campos necesarios para la API PHP
   Map<String, String> toPhpBody() {
     final map = {
       'cif_empresa'      : cifEmpresa      ?? '',
@@ -122,6 +123,10 @@ extension HistoricoPhp on Historico {
     // Solo enviamos fecha_salida si tiene valor
     if (fechaSalida != null && fechaSalida!.isNotEmpty) {
       map['fecha_salida'] = fechaSalida!;
+    }
+    // Si el fichaje es de tipo incidencia, enviamos el código de incidencia
+    if (tipo?.toLowerCase() == 'incidencia' && incidenciaCodigo != null && incidenciaCodigo!.isNotEmpty) {
+      map['incidencia_codigo'] = incidenciaCodigo!;
     }
     return map;
   }

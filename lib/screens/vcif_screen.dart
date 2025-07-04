@@ -14,30 +14,24 @@ class VCifScreen extends StatefulWidget {
 }
 
 class _VCifScreenState extends State<VCifScreen> {
-  // Controlador para la caja de texto del CIF
   final TextEditingController txtVCifCifEmpresa = TextEditingController();
-
-  // Estado de carga (true cuando se está guardando el CIF)
   bool vaIsLoading = false;
-  // Mensaje de error
   String? etiVCifError;
 
   @override
   void initState() {
     super.initState();
-    _checkCifGuardado(); // Comprueba si ya hay un CIF guardado al iniciar
+    _checkCifGuardado();
   }
 
-  /// Comprueba si ya hay un CIF guardado; si sí, salta al login directamente.
   Future<void> _checkCifGuardado() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? VACif = prefs.getString('cif_empresa');
     if (VACif != null && VACif.isNotEmpty) {
-      _irALogin(context); // Si hay CIF, va directo al login
+      _irALogin(context);
     }
   }
 
-  /// Guarda el CIF introducido, descarga datos y navega al login.
   Future<void> _guardarCifYContinuar() async {
     String VACif = txtVCifCifEmpresa.text.trim();
     if (VACif.isEmpty) {
@@ -46,34 +40,32 @@ class _VCifScreenState extends State<VCifScreen> {
     }
 
     setState(() {
-      vaIsLoading = true; // Muestra el indicador de carga
+      vaIsLoading = true;
       etiVCifError = null;
     });
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('cif_empresa', VACif); // Guarda el CIF
+    await prefs.setString('cif_empresa', VACif);
 
     try {
-      const token = '123456.abcd'; // Token fijo para la sincronización inicial
+      const token = '123456.abcd';
 
-      // Descarga y guarda empleados, sucursales e incidencias usando el CIF y el token
       await EmpleadoService.descargarYGuardarEmpleados(VACif, token, BASE_URL);
       await SucursalService.descargarYGuardarSucursales(VACif, token, BASE_URL);
       await IncidenciaService.descargarYGuardarIncidencias(VACif, token, BASE_URL);
 
-      _irALogin(context); // Si todo va bien, navega al login
+      _irALogin(context);
     } catch (e, stacktrace) {
       print('ERROR descargando datos: $e');
       print('STACKTRACE: $stacktrace');
       setState(() {
-        etiVCifError = 'Error descargando datos: $e'; // Muestra error si falla la descarga
+        etiVCifError = 'Error descargando datos: $e';
       });
     } finally {
-      setState(() => vaIsLoading = false); // Oculta el indicador de carga
+      setState(() => vaIsLoading = false);
     }
   }
 
-  /// Navega a la pantalla de login.
   void _irALogin(BuildContext context) {
     Navigator.pushReplacementNamed(context, '/login');
   }
@@ -89,7 +81,16 @@ class _VCifScreenState extends State<VCifScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Campo de texto para el CIF
+            Center(
+              child: Image.asset(
+                'assets/images/iconotrivalle.png',
+                width: 120,   // Ajusta el tamaño a tu gusto
+                height: 120,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 40),
+
             TextField(
               controller: txtVCifCifEmpresa,
               decoration: InputDecoration(
@@ -100,7 +101,6 @@ class _VCifScreenState extends State<VCifScreen> {
               onSubmitted: (_) => _guardarCifYContinuar(),
             ),
             const SizedBox(height: 32),
-            // Botón de continuar o indicador de carga
             vaIsLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
