@@ -91,6 +91,39 @@ class EmpleadoService {
     }
   }
 
+  // Actualiza un empleado en la API (modificación remota)
+  static Future<String> actualizarEmpleadoRemoto({
+    required Empleado empleado,
+    required String usuarioOriginal,
+    required String token,
+  }) async {
+    final url = Uri.parse('$BASE_URL?Code=203');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'Token': token,
+        'usuario_original': usuarioOriginal,
+        'usuario': empleado.usuario,
+        'cif_empresa': empleado.cifEmpresa,
+        'direccion': empleado.direccion ?? '',
+        'poblacion': empleado.poblacion ?? '',
+        'codigo_postal': empleado.codigoPostal ?? '',
+        'telefono': empleado.telefono ?? '',
+        'email': empleado.email ?? '',
+        'nombre': empleado.nombre ?? '',
+        'dni': empleado.dni ?? '',
+        'rol': empleado.rol ?? '',
+        'password_hash': empleado.passwordHash ?? '',
+      },
+    );
+    if (response.statusCode == 200) {
+      return response.body; // Ej: "OK;Empleado actualizado" o error
+    } else {
+      throw Exception("Error al conectar con el servidor: ${response.statusCode}");
+    }
+  }
+
   // Elimina un empleado en la API (baja remota)
   static Future<String> eliminarEmpleadoRemoto({
     required String usuario,
@@ -114,6 +147,4 @@ class EmpleadoService {
       throw Exception("Error al conectar con el servidor: ${response.statusCode}");
     }
   }
-
-  // (Opcional) Podrías añadir método para actualizar empleado remoto (si la API lo soporta)
 }

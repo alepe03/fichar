@@ -8,24 +8,18 @@ import '../models/incidencia.dart';
 import '../db/database_helper.dart';
 import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
-import 'login_screen.dart';
 
-// Pantalla de administración principal con pestañas para usuarios, fichajes e incidencias
-// Usa Provider para gestionar el estado y la recarga de datos
+const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
-// ----------------- PROVIDER -----------------
-// AdminProvider gestiona los datos y operaciones CRUD de empleados, fichajes e incidencias
 class AdminProvider extends ChangeNotifier {
-  List<Empleado> empleados = [];     // Lista de empleados cargados
-  List<Historico> historicos = [];   // Lista de fichajes cargados
-  List<Incidencia> incidencias = []; // Lista de incidencias cargadas
+  List<Empleado> empleados = [];
+  List<Historico> historicos = [];
+  List<Incidencia> incidencias = [];
 
-  final String cifEmpresa;           // CIF de la empresa actual
+  final String cifEmpresa;
 
   AdminProvider(this.cifEmpresa);
 
-  // --- CARGA DATOS ---
-  // Carga empleados desde la base de datos local
   Future<void> cargarEmpleados() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -33,7 +27,6 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Carga fichajes desde la base de datos local
   Future<void> cargarHistoricos() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -41,14 +34,11 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Carga incidencias desde la base de datos local
   Future<void> cargarIncidencias() async {
     incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
     notifyListeners();
   }
 
-  // --- CRUD EMPLEADOS ---
-  // Añade un empleado tanto en remoto como en local
   Future<String?> addEmpleado(Empleado empleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -63,8 +53,22 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // Actualiza un empleado en local (requiere usuario original)
-  Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
+Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token') ?? '';
+
+  try {
+    final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
+      empleado: empleado,
+      usuarioOriginal: usuarioOriginal,
+      token: token,
+    );
+
+    if (!respuesta.startsWith('OK')) {
+      return respuesta; // Devuelve mensaje de error recibido del servidor
+    }
+
+    // Si OK, actualizamos localmente
     final db = await DatabaseHelper.instance.database;
     await db.update(
       'empleados',
@@ -74,9 +78,12 @@ class AdminProvider extends ChangeNotifier {
     );
     await cargarEmpleados();
     return null;
+  } catch (e) {
+    return 'Error actualizando empleado: $e';
   }
+}
 
-  // Elimina un empleado tanto en remoto como en local
+
   Future<String?> deleteEmpleado(String usuario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -95,8 +102,6 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // --- CRUD INCIDENCIAS ---
-  // Añade una incidencia tanto en remoto como en local
   Future<String?> addIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -114,7 +119,6 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // Actualiza una incidencia tanto en remoto como en local
   Future<String?> updateIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -137,7 +141,6 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // Elimina una incidencia tanto en remoto como en local
   Future<String?> deleteIncidencia(String codigo) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -161,8 +164,6 @@ class AdminProvider extends ChangeNotifier {
   }
 }
 
-// ----------------- SCREEN PRINCIPAL -----------------
-// Pantalla principal con pestañas para Usuarios, Fichajes e Incidencias
 class AdminScreen extends StatefulWidget {
   final String cifEmpresa;
   const AdminScreen({Key? key, required this.cifEmpresa}) : super(key: key);
@@ -172,14 +173,12 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
-  // Controlador de pestañas
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Carga los datos al iniciar la pantalla
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<AdminProvider>(context, listen: false);
       provider.cargarEmpleados();
@@ -188,33 +187,38 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     });
   }
 
-  // Cierra sesión y vuelve a la pantalla de login
-  void _logout(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    if (context.mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
-    }
-  }
+  // Quitamos botón de salir, por eso no se necesita esta función.
+  // Si quieres, mantén esta función para logout y redirección cuando implementes logout desde otra UI.
+  // void _logout(BuildContext context) async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   await prefs.clear();
+  //   if (context.mounted) {
+  //     Navigator.of(context).pushAndRemoveUntil(
+  //       MaterialPageRoute(builder: (_) => const LoginScreen()),
+  //       (route) => false,
+  //     );
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Panel de Administración'),
-        actions: [
-          // Botón para cerrar sesión
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Salir',
-            onPressed: () => _logout(context),
-          ),
-        ],
+        title: const Text(
+          'Panel de Administración',
+          style: TextStyle(color: Colors.white),
+        ),
+        centerTitle: true,
+        elevation: 3,
+        backgroundColor: kPrimaryBlue,
+        // Eliminado botón derecho de salir, acciones vacías
+        actions: [],
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(text: 'Usuarios'),
             Tab(text: 'Fichajes'),
@@ -222,7 +226,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ],
         ),
       ),
-      // Cuerpo con las tres pestañas
       body: TabBarView(
         controller: _tabController,
         children: const [
@@ -235,8 +238,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   }
 }
 
-// ----------------- TAB USUARIOS -----------------
-// Pestaña para ver, añadir, editar y borrar empleados
 class UsuariosTab extends StatelessWidget {
   const UsuariosTab({Key? key}) : super(key: key);
 
@@ -244,8 +245,9 @@ class UsuariosTab extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: _FormularioEmpleado(
             cifEmpresa: provider.cifEmpresa,
             empleadoExistente: empleado,
@@ -259,7 +261,7 @@ class UsuariosTab extends StatelessWidget {
               if (context.mounted) Navigator.pop(context);
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(error), backgroundColor: Colors.red),
+                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
                 );
               }
             },
@@ -274,45 +276,69 @@ class UsuariosTab extends StatelessWidget {
     return Consumer<AdminProvider>(
       builder: (context, provider, _) {
         return Scaffold(
-          floatingActionButton: FloatingActionButton(
-            onPressed: () => _abrirDialogo(context, provider),
-            child: const Icon(Icons.add),
-            tooltip: 'Añadir empleado',
+          backgroundColor: Colors.white,
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 80.0), // Mueve el botón arriba para que no tape la barra inferior si hay
+            child: FloatingActionButton.extended(
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text(
+                'Añadir usuario',
+                style: TextStyle(color: Colors.white),
+              ),
+              onPressed: () => _abrirDialogo(context, provider),
+              backgroundColor: kPrimaryBlue,
+              elevation: 6,
+            ),
           ),
           body: provider.empleados.isEmpty
-              ? const Center(child: Text('No hay usuarios.'))
-              : ListView.builder(
+              ? const Center(
+                  child: Text(
+                    'No hay usuarios registrados.',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  separatorBuilder: (_, __) => const Divider(height: 16, thickness: 1),
                   itemCount: provider.empleados.length,
                   itemBuilder: (context, index) {
                     final emp = provider.empleados[index];
-                    return ListTile(
-                      title: Text(emp.nombre ?? emp.usuario),
-                      subtitle: Text('${emp.email ?? ''} (${emp.rol ?? ''})'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('¿Borrar usuario?'),
-                              content: Text('¿Seguro que quieres borrar "${emp.usuario}"?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Borrar')),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            final error = await provider.deleteEmpleado(emp.usuario);
-                            if (error != null && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(error), backgroundColor: Colors.red),
-                              );
+                    return Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        title: Text(emp.nombre ?? emp.usuario,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
+                        subtitle: Text('${emp.email ?? 'Sin email'} · Rol: ${emp.rol ?? 'N/D'}',
+                            style: const TextStyle(fontSize: 14)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                          tooltip: 'Eliminar usuario',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Confirmar borrado'),
+                                content: Text('¿Quieres eliminar al usuario "${emp.usuario}"?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              final error = await provider.deleteEmpleado(emp.usuario);
+                              if (error != null && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                                );
+                              }
                             }
-                          }
-                        },
+                          },
+                        ),
+                        onTap: () => _abrirDialogo(context, provider, empleado: emp),
                       ),
-                      onTap: () => _abrirDialogo(context, provider, empleado: emp),
                     );
                   },
                 ),
@@ -322,7 +348,6 @@ class UsuariosTab extends StatelessWidget {
   }
 }
 
-// ----------------- FORMULARIO ALTA/EDICIÓN EMPLEADO -----------------
 class _FormularioEmpleado extends StatefulWidget {
   final String cifEmpresa;
   final Empleado? empleadoExistente;
@@ -349,10 +374,9 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   late TextEditingController _telefonoCtrl;
   late TextEditingController _dniCtrl;
   late TextEditingController _passwordHashCtrl;
-  final _rols = ['admin', 'empleado'];
+  final _roles = ['admin', 'empleado'];
   String? _rolSeleccionado;
 
-  // Variable para guardar usuario original
   late String _usuarioOriginal;
 
   @override
@@ -375,7 +399,8 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
 
   @override
   Widget build(BuildContext context) {
-    final esEdicion = widget.empleadoExistente != null;
+    final isEditing = widget.empleadoExistente != null;
+    final theme = Theme.of(context);
     return SingleChildScrollView(
       child: Form(
         key: _formKey,
@@ -383,83 +408,145 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              esEdicion ? 'Editar empleado' : 'Nuevo empleado',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              isEditing ? 'Editar empleado' : 'Nuevo empleado',
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _usuarioCtrl,
+              decoration: InputDecoration(
+                labelText: 'Usuario',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person, color: kPrimaryBlue),
+              ),
+              validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
+              enabled: true,
             ),
             const SizedBox(height: 12),
             TextFormField(
-              controller: _usuarioCtrl,
-              decoration: const InputDecoration(labelText: 'Usuario'),
-              validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
-              enabled: true, // ahora siempre editable
-            ),
-            TextFormField(
               controller: _nombreCtrl,
-              decoration: const InputDecoration(labelText: 'Nombre'),
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.badge, color: kPrimaryBlue),
+              ),
               validator: (v) => v == null || v.isEmpty ? 'Nombre obligatorio' : null,
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email, color: kPrimaryBlue),
+              ),
+              keyboardType: TextInputType.emailAddress,
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _direccionCtrl,
-              decoration: const InputDecoration(labelText: 'Dirección'),
+              decoration: InputDecoration(
+                labelText: 'Dirección',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.home, color: kPrimaryBlue),
+              ),
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _poblacionCtrl,
-              decoration: const InputDecoration(labelText: 'Población'),
+              decoration: InputDecoration(
+                labelText: 'Población',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_city, color: kPrimaryBlue),
+              ),
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _codigoPostalCtrl,
-              decoration: const InputDecoration(labelText: 'Código Postal'),
+              decoration: InputDecoration(
+                labelText: 'Código Postal',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.local_post_office, color: kPrimaryBlue),
+              ),
+              keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _telefonoCtrl,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
+              decoration: InputDecoration(
+                labelText: 'Teléfono',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.phone, color: kPrimaryBlue),
+              ),
+              keyboardType: TextInputType.phone,
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _dniCtrl,
-              decoration: const InputDecoration(labelText: 'DNI'),
+              decoration: InputDecoration(
+                labelText: 'DNI',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.credit_card, color: kPrimaryBlue),
+              ),
               validator: (v) => v == null || v.isEmpty ? 'DNI obligatorio' : null,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              decoration: const InputDecoration(labelText: 'Rol'),
+              decoration: InputDecoration(
+                labelText: 'Rol',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
+              ),
               value: _rolSeleccionado,
-              items: _rols
-                  .map((r) => DropdownMenuItem(value: r, child: Text(r == 'admin' ? 'Administrador' : 'Empleado')))
+              items: _roles
+                  .map(
+                    (r) => DropdownMenuItem(
+                      value: r,
+                      child: Text(r == 'admin' ? 'Administrador' : 'Empleado'),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) => setState(() => _rolSeleccionado = v),
               validator: (v) => v == null ? 'Selecciona un rol' : null,
             ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _passwordHashCtrl,
-              decoration: const InputDecoration(labelText: 'Hash Password'),
+              decoration: InputDecoration(
+                labelText: 'Hash Password',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock, color: kPrimaryBlue),
+              ),
+              obscureText: true,
               validator: (v) => v == null || v.isEmpty ? 'Contraseña obligatoria' : null,
             ),
-            const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  widget.onSubmit(
-                    Empleado(
-                      usuario: _usuarioCtrl.text,
-                      cifEmpresa: widget.cifEmpresa,
-                      direccion: _direccionCtrl.text,
-                      poblacion: _poblacionCtrl.text,
-                      codigoPostal: _codigoPostalCtrl.text,
-                      telefono: _telefonoCtrl.text,
-                      email: _emailCtrl.text,
-                      nombre: _nombreCtrl.text,
-                      dni: _dniCtrl.text,
-                      rol: _rolSeleccionado,
-                      passwordHash: _passwordHashCtrl.text,
-                    ),
-                    _usuarioOriginal, // paso usuario original para update
-                  );
-                }
-              },
-              child: Text(esEdicion ? 'Guardar cambios' : 'Guardar'),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    widget.onSubmit(
+                      Empleado(
+                        usuario: _usuarioCtrl.text.trim(),
+                        cifEmpresa: widget.cifEmpresa,
+                        direccion: _direccionCtrl.text.trim(),
+                        poblacion: _poblacionCtrl.text.trim(),
+                        codigoPostal: _codigoPostalCtrl.text.trim(),
+                        telefono: _telefonoCtrl.text.trim(),
+                        email: _emailCtrl.text.trim(),
+                        nombre: _nombreCtrl.text.trim(),
+                        dni: _dniCtrl.text.trim(),
+                        rol: _rolSeleccionado,
+                        passwordHash: _passwordHashCtrl.text.trim(),
+                      ),
+                      _usuarioOriginal,
+                    );
+                  }
+                },
+                child: Text(isEditing ? 'Guardar cambios' : 'Guardar'),
+              ),
             ),
           ],
         ),
@@ -468,25 +555,121 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   }
 }
 
-// ----------------- TAB FICHAJES -----------------
-// Pestaña para ver el histórico de fichajes de la empresa
 class FichajesTab extends StatelessWidget {
   const FichajesTab({Key? key}) : super(key: key);
+
+  List<SesionTrabajo> _agruparSesiones(List<Historico> registros) {
+    List<SesionTrabajo> sesiones = [];
+    Map<String, List<Historico>> registrosPorUsuario = {};
+
+    for (var reg in registros) {
+      registrosPorUsuario.putIfAbsent(reg.usuario ?? '', () => []).add(reg);
+    }
+
+    for (var usuario in registrosPorUsuario.keys) {
+      final registrosUsuario = registrosPorUsuario[usuario]!;
+
+      Historico? entradaPendiente;
+      Historico? salidaPendiente;
+      
+
+      for (var reg in registrosUsuario) {
+        if (reg.tipo?.toLowerCase() == 'entrada') {
+          if (entradaPendiente != null) {
+            sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: null));
+          }
+          entradaPendiente = reg;
+          salidaPendiente = null;
+        } else if (reg.tipo?.toLowerCase() == 'salida') {
+          if (entradaPendiente != null) {
+            sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: reg));
+            entradaPendiente = null;
+            salidaPendiente = null;
+          } else {
+            sesiones.add(SesionTrabajo(entrada: null, salida: reg));
+          }
+        }
+      }
+      if (entradaPendiente != null) {
+        sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: null));
+      }
+    }
+    sesiones.sort((a, b) {
+      final fechaA = a.entrada?.fechaEntrada ?? '';
+      final fechaB = b.entrada?.fechaEntrada ?? '';
+      return fechaB.compareTo(fechaA);
+    });
+    return sesiones;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminProvider>(
       builder: (context, provider, _) {
         if (provider.historicos.isEmpty) {
-          return const Center(child: Text('No hay fichajes.'));
+          return const Center(
+            child: Text('No hay fichajes.', style: TextStyle(fontSize: 18, color: Colors.grey)),
+          );
         }
+
+        final Map<String, Empleado> mapaEmpleados = {
+          for (var e in provider.empleados) e.usuario: e
+        };
+
+        final sesiones = _agruparSesiones(provider.historicos);
+
         return ListView.builder(
-          itemCount: provider.historicos.length,
+          padding: const EdgeInsets.all(16),
+          itemCount: sesiones.length,
           itemBuilder: (context, index) {
-            final hist = provider.historicos[index];
-            return ListTile(
-              title: Text('Usuario: ${hist.usuario}'),
-              subtitle: Text('Entrada: ${hist.fechaEntrada} - Salida: ${hist.fechaSalida ?? "-"}'),
+            final sesion = sesiones[index];
+            final empleado = sesion.entrada != null
+                ? mapaEmpleados[sesion.entrada!.usuario]
+                : sesion.salida != null
+                    ? mapaEmpleados[sesion.salida!.usuario]
+                    : null;
+
+            String entradaStr = sesion.entrada?.fechaEntrada ?? '-';
+            String salidaStr = sesion.salida?.fechaSalida ?? '-';
+
+            String tiempoTrabajado = '';
+            if (sesion.entrada != null && sesion.salida != null) {
+              final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
+              final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
+              if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
+                final duracion = dtSalida.difference(dtEntrada);
+                final horas = duracion.inHours.toString().padLeft(2, '0');
+                final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
+                tiempoTrabajado = '$horas:$minutos h';
+              }
+            }
+
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      empleado != null
+                          ? '${empleado.nombre ?? sesion.entrada?.usuario ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
+                          : sesion.entrada?.usuario ?? sesion.salida?.usuario ?? 'Usuario desconocido',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 6),
+                    Text('Entrada: $entradaStr'),
+                    Text('Salida: $salidaStr'),
+                    if (tiempoTrabajado.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text('Tiempo trabajado: $tiempoTrabajado', style: const TextStyle(color: kPrimaryBlue)),
+                      ),
+                  ],
+                ),
+              ),
             );
           },
         );
@@ -495,8 +678,13 @@ class FichajesTab extends StatelessWidget {
   }
 }
 
-// ----------------- TAB INCIDENCIAS -----------------
-// Pestaña para ver, añadir, editar y borrar incidencias
+class SesionTrabajo {
+  final Historico? entrada;
+  final Historico? salida;
+
+  SesionTrabajo({this.entrada, this.salida});
+}
+
 class IncidenciasTab extends StatelessWidget {
   const IncidenciasTab({Key? key}) : super(key: key);
 
@@ -504,8 +692,9 @@ class IncidenciasTab extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: _FormularioIncidencia(
             cifEmpresa: provider.cifEmpresa,
             incidenciaExistente: incidencia,
@@ -519,7 +708,7 @@ class IncidenciasTab extends StatelessWidget {
               if (context.mounted) Navigator.pop(context);
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(error), backgroundColor: Colors.red),
+                  const SnackBar(content: Text('Error al guardar'), backgroundColor: Colors.redAccent),
                 );
               }
             },
@@ -534,44 +723,67 @@ class IncidenciasTab extends StatelessWidget {
     return Consumer<AdminProvider>(
       builder: (context, provider, _) {
         return Scaffold(
-          floatingActionButton: FloatingActionButton(
-            onPressed: () => _abrirDialogo(context, provider),
-            child: const Icon(Icons.add),
-            tooltip: 'Añadir incidencia',
+          backgroundColor: Colors.white,
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 80.0), // Igual que UsuariosTab para evitar tapado
+            child: FloatingActionButton.extended(
+              icon: const Icon(Icons.add_alert, color: Colors.white),
+              label: const Text(
+                'Añadir incidencia',
+                style: TextStyle(color: Colors.white),
+              ),
+              onPressed: () => _abrirDialogo(context, provider),
+              backgroundColor: kPrimaryBlue,
+              elevation: 6,
+            ),
           ),
           body: provider.incidencias.isEmpty
-              ? const Center(child: Text('No hay incidencias.'))
-              : ListView.builder(
+              ? const Center(
+                  child: Text(
+                    'No hay incidencias registradas.',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  separatorBuilder: (_, __) => const Divider(height: 16, thickness: 1),
                   itemCount: provider.incidencias.length,
                   itemBuilder: (context, index) {
                     final inc = provider.incidencias[index];
-                    return ListTile(
-                      title: Text('${inc.codigo} - ${inc.descripcion ?? ""}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('¿Borrar incidencia?'),
-                              content: Text('¿Seguro que quieres borrar la incidencia código "${inc.codigo}"?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Borrar')),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            final error = await provider.deleteIncidencia(inc.codigo);
-                            if (error != null && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(error), backgroundColor: Colors.red),
-                              );
+                    return Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        title: Text('${inc.codigo} - ${inc.descripcion ?? ''}',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                          tooltip: 'Eliminar incidencia',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Confirmar borrado'),
+                                content: Text('¿Quieres eliminar la incidencia código "${inc.codigo}"?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              final error = await provider.deleteIncidencia(inc.codigo);
+                              if (error != null && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                                );
+                              }
                             }
-                          }
-                        },
+                          },
+                        ),
+                        onTap: () => _abrirDialogo(context, provider, incidencia: inc),
                       ),
-                      onTap: () => _abrirDialogo(context, provider, incidencia: inc),
                     );
                   },
                 ),
@@ -581,7 +793,6 @@ class IncidenciasTab extends StatelessWidget {
   }
 }
 
-// -------------- FORMULARIO ALTA/EDICIÓN INCIDENCIA --------------
 class _FormularioIncidencia extends StatefulWidget {
   final String cifEmpresa;
   final Incidencia? incidenciaExistente;
@@ -611,7 +822,8 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
 
   @override
   Widget build(BuildContext context) {
-    final esEdicion = widget.incidenciaExistente != null;
+    final isEditing = widget.incidenciaExistente != null;
+    final theme = Theme.of(context);
     return SingleChildScrollView(
       child: Form(
         key: _formKey,
@@ -619,35 +831,48 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              esEdicion ? 'Editar incidencia' : 'Nueva incidencia',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              isEditing ? 'Editar incidencia' : 'Nueva incidencia',
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _codigoCtrl,
+              decoration: InputDecoration(
+                labelText: 'Código',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.code, color: kPrimaryBlue),
+              ),
+              validator: (v) => v == null || v.isEmpty ? 'Código obligatorio' : null,
+              enabled: !isEditing,
             ),
             const SizedBox(height: 12),
             TextFormField(
-              controller: _codigoCtrl,
-              decoration: const InputDecoration(labelText: 'Código'),
-              validator: (v) => v == null || v.isEmpty ? 'Código obligatorio' : null,
-              enabled: !esEdicion, // No editable en edición
-            ),
-            TextFormField(
               controller: _descripcionCtrl,
-              decoration: const InputDecoration(labelText: 'Descripción'),
+              decoration: InputDecoration(
+                labelText: 'Descripción',
+                border: const OutlineInputBorder(),
+                prefixIcon: Icon(Icons.description, color: kPrimaryBlue),
+              ),
               validator: (v) => v == null || v.isEmpty ? 'Descripción obligatoria' : null,
             ),
-            const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  widget.onSubmit(
-                    Incidencia(
-                      codigo: _codigoCtrl.text,
-                      descripcion: _descripcionCtrl.text,
-                      cifEmpresa: widget.cifEmpresa,
-                    ),
-                  );
-                }
-              },
-              child: Text(esEdicion ? 'Guardar cambios' : 'Guardar'),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    widget.onSubmit(
+                      Incidencia(
+                        codigo: _codigoCtrl.text.trim(),
+                        descripcion: _descripcionCtrl.text.trim(),
+                        cifEmpresa: widget.cifEmpresa,
+                      ),
+                    );
+                  }
+                },
+                child: Text(isEditing ? 'Guardar cambios' : 'Guardar'),
+              ),
             ),
           ],
         ),

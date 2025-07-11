@@ -1,11 +1,11 @@
+import 'package:fichar/screens/home_screen_admin.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart'; 
 import '../services/auth_service.dart';
-import 'fichar_screen.dart';
-import 'admin_screen.dart'; 
+import 'admin_screen.dart';
+import 'home_screen.dart';  // Importa aquí el HomeScreen
 
-// Pantalla de login principal
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,22 +14,20 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Controladores para los campos de usuario y contraseña
   final TextEditingController txtVLoginUsuario = TextEditingController();
   final TextEditingController txtVLoginPassword = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool vaIsLoading = false;          // Estado de carga
-  bool vaObscurePassword = true;     // Mostrar/ocultar contraseña
-  bool vaRecordarUsuario = false;    // Checkbox para recordar usuario
-  String? vaErrorMessage;            // Mensaje de error
+  bool vaIsLoading = false;
+  bool vaObscurePassword = true;
+  bool vaRecordarUsuario = false;
+  String? vaErrorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadRememberedCredentials(); // Carga usuario/contraseña guardados si existen
+    _loadRememberedCredentials();
   }
 
-  // Carga usuario y contraseña recordados si existen en SharedPreferences
   Future<void> _loadRememberedCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? usuarioGuardado = prefs.getString('usuario_recordado');
@@ -51,7 +49,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Lógica del botón "Entrar"
   Future<void> btnVLoginEntrar() async {
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -64,7 +61,6 @@ class _LoginScreenState extends State<LoginScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final cifEmpresa = prefs.getString('cif_empresa') ?? '';
 
-    // Si no hay CIF, muestra error
     if (cifEmpresa.isEmpty) {
       setState(() {
         vaErrorMessage = "No se ha encontrado el CIF de la empresa. Vuelve a la pantalla anterior.";
@@ -73,7 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Llama al servicio de autenticación local
     final empleado = await AuthService.loginLocal(
       txtVLoginUsuario.text.trim(),
       txtVLoginPassword.text,
@@ -81,7 +76,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (empleado != null) {
-      // Guarda usuario y contraseña solo si el checkbox está marcado
       if (vaRecordarUsuario) {
         await prefs.setString('usuario_recordado', txtVLoginUsuario.text.trim());
         await prefs.setString('password_recordado', txtVLoginPassword.text);
@@ -90,7 +84,6 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove('password_recordado');
       }
 
-      // Guarda datos del usuario autenticado en SharedPreferences
       await prefs.setString('usuario', empleado.usuario);
       await prefs.setString('nombre_empleado', empleado.nombre ?? '');
       await prefs.setString('dni_empleado', empleado.dni ?? '');
@@ -101,29 +94,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Navegación según el rol del usuario
       final bool esAdmin = empleado.rol != null && empleado.rol!.toLowerCase() == 'admin';
 
       if (esAdmin) {
-        // Si es admin, navega al panel de administración
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => ChangeNotifierProvider(
               create: (_) => AdminProvider(empleado.cifEmpresa),
-              child: AdminScreen(cifEmpresa: empleado.cifEmpresa),
+              child: HomeScreenAdmin(
+                usuario: empleado.usuario,
+                cifEmpresa: empleado.cifEmpresa),
             ),
           ),
         );
       } else {
-        // Si no es admin, navega a la pantalla de fichar
+        // Aquí el cambio importante: navegar al HomeScreen con la barra inferior y pasando datos
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const FicharScreen()),
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(
+              usuario: empleado.usuario,
+              cifEmpresa: empleado.cifEmpresa,
+            ),
+          ),
         );
       }
     } else {
-      // Si no encuentra el usuario, muestra error
       setState(() {
         vaErrorMessage = "Usuario o contraseña incorrectos.";
       });
@@ -169,7 +166,6 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo de la empresa
                   Image.asset(
                     'assets/images/iconotrivalle.png',
                     width: 100,
@@ -177,7 +173,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 16),
-                  // Campo de usuario
                   TextFormField(
                     controller: txtVLoginUsuario,
                     decoration: const InputDecoration(
@@ -194,7 +189,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !vaIsLoading,
                   ),
                   const SizedBox(height: 20),
-                  // Campo de contraseña
                   TextFormField(
                     controller: txtVLoginPassword,
                     decoration: InputDecoration(
@@ -222,7 +216,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !vaIsLoading,
                   ),
                   const SizedBox(height: 12),
-                  // Checkbox para recordar usuario y contraseña
                   Row(
                     children: [
                       Checkbox(
@@ -239,7 +232,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text("Recordar usuario"),
                     ],
                   ),
-                  // Muestra mensaje de error si existe
                   if (vaErrorMessage != null) ...[
                     const SizedBox(height: 16),
                     Text(
@@ -248,7 +240,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                   const SizedBox(height: 32),
-                  // Botón de entrar o indicador de carga
                   vaIsLoading
                       ? const CircularProgressIndicator(color: Colors.blue)
                       : SizedBox(

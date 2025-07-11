@@ -7,8 +7,6 @@ import '../models/historico.dart';
 import '../models/incidencia.dart'; 
 import '../services/historico_service.dart'; 
 import '../services/incidencia_service.dart'; 
-import 'login_screen.dart';
-import 'historico_screen.dart'; 
 
 // Función para obtener la fecha/hora actual en formato MySQL
 String nowToMySQL() {
@@ -83,7 +81,6 @@ class _FicharScreenState extends State<FicharScreen> {
     _initTemporizador();
   }
 
-  // Calcula si los botones de entrada/salida deben estar habilitados
   void _calcularEstadoBotones() {
     setState(() {
       if (vaUltimaAccion == 'Entrada') {
@@ -99,7 +96,6 @@ class _FicharScreenState extends State<FicharScreen> {
     });
   }
 
-  // Inicializa el temporizador para mostrar el tiempo trabajado
   void _initTemporizador() {
     _timer?.cancel();
     if (vaUltimaAccion == 'Entrada' && _horaEntrada != null) {
@@ -114,7 +110,6 @@ class _FicharScreenState extends State<FicharScreen> {
     }
   }
 
-  // Actualiza el tiempo trabajado desde la última entrada
   void _actualizaTiempoTrabajado() {
     if (_horaEntrada == null) return;
     final ahora = DateTime.now();
@@ -123,7 +118,6 @@ class _FicharScreenState extends State<FicharScreen> {
     });
   }
 
-  // Guarda la última acción (entrada, salida, incidencia) en preferencias
   Future<void> _setUltimaAccion(String tipo, {DateTime? horaEntrada}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ultimo_tipo_fichaje', tipo);
@@ -131,7 +125,7 @@ class _FicharScreenState extends State<FicharScreen> {
       await prefs.setString('hora_entrada', horaEntrada.toIso8601String());
       _horaEntrada = horaEntrada;
     }
-    if (tipo == 'Salida' || tipo == 'Incidencia') {
+    if (tipo == 'Salida' || tipo == 'IncidenciaEntrada' || tipo == 'IncidenciaSalida' || tipo == 'IncidenciaSinContexto' || tipo == 'IncidenciaSolo') {
       await prefs.remove('hora_entrada');
       _horaEntrada = null;
     }
@@ -140,23 +134,39 @@ class _FicharScreenState extends State<FicharScreen> {
     _initTemporizador();
   }
 
-  // Registra un fichaje (entrada, salida o incidencia)
   Future<void> _registrarFichaje(
     String tipo, {
     String? incidenciaCodigo,
     String? observaciones,
+    bool esIncidencia = false,
   }) async {
     final fechaActual = nowToMySQL();
     final ahora = DateTime.now();
 
-    // Crea el objeto historico con los datos del fichaje
+    String tipoParaGuardar = tipo;
+
+    if (esIncidencia) {
+      if (tipo == 'IncidenciaSolo') {
+        tipoParaGuardar = 'IncidenciaSolo';
+      } else {
+        // Asignamos contexto según la última acción solo si no es IncidenciaSolo
+        if (vaUltimaAccion == 'Entrada') {
+          tipoParaGuardar = 'IncidenciaEntrada';
+        } else if (vaUltimaAccion == 'Salida') {
+          tipoParaGuardar = 'IncidenciaSalida';
+        } else {
+          tipoParaGuardar = 'IncidenciaSinContexto';
+        }
+      }
+    }
+
     final historico = Historico(
       id: 0,
       cifEmpresa: cifEmpresa,
       usuario: usuario,
       fechaEntrada: tipo == 'Salida' ? '' : fechaActual,
       fechaSalida: tipo == 'Salida' ? fechaActual : null,
-      tipo: tipo,
+      tipo: tipoParaGuardar,
       incidenciaCodigo: incidenciaCodigo,
       observaciones: observaciones,
       nombreEmpleado: nombreEmpleado,
@@ -164,10 +174,8 @@ class _FicharScreenState extends State<FicharScreen> {
       idSucursal: idSucursal,
     );
 
-    // Guarda el fichaje localmente
     await HistoricoService.guardarFichajeLocal(historico);
 
-    // Intenta guardar el fichaje en la nube
     try {
       await HistoricoService.guardarFichajeRemoto(
         historico,
@@ -176,27 +184,24 @@ class _FicharScreenState extends State<FicharScreen> {
         'qame400',
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$tipo registrada (online)')),
+        SnackBar(content: Text('$tipoParaGuardar registrada (online)')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$tipo guardada localmente')),
+        SnackBar(content: Text('$tipoParaGuardar guardada localmente')),
       );
     }
 
-    // Actualiza el estado según el tipo de fichaje
     if (tipo == 'Entrada') {
       await _setUltimaAccion(tipo, horaEntrada: ahora);
     } else {
-      await _setUltimaAccion(tipo);
+      await _setUltimaAccion(tipoParaGuardar);
     }
   }
 
-  // Acciones para los botones principales
   void _onEntrada() => _registrarFichaje('Entrada');
   void _onSalida()  => _registrarFichaje('Salida');
 
-  // Carga las incidencias desde la API o localmente
   Future<void> _cargarIncidencias() async {
     setState(() { cargandoIncidencias = true; errorIncidencias = null; });
     try {
@@ -214,7 +219,6 @@ class _FicharScreenState extends State<FicharScreen> {
     setState(() { cargandoIncidencias = false; });
   }
 
-  // Diálogo para registrar una incidencia (con selección y confirmación)
   void _onIncidencia() async {
     await _cargarIncidencias();
     txtObservaciones.clear();
@@ -240,7 +244,6 @@ class _FicharScreenState extends State<FicharScreen> {
                         style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 18),
-                      // Combo para seleccionar incidencia
                       cargandoIncidencias
                           ? const CircularProgressIndicator()
                           : DropdownButtonFormField<Incidencia>(
@@ -261,7 +264,6 @@ class _FicharScreenState extends State<FicharScreen> {
                           child: Text(errorIncidencias!, style: const TextStyle(color: Colors.orange)),
                         ),
                       const SizedBox(height: 18),
-                      // Campo de texto para observaciones
                       TextField(
                         controller: txtObservaciones,
                         decoration: const InputDecoration(
@@ -270,7 +272,6 @@ class _FicharScreenState extends State<FicharScreen> {
                         ),
                         maxLines: 2,
                       ),
-                      // Checkbox de confirmación
                       CheckboxListTile(
                         value: confirmado,
                         onChanged: (v) => setStateDialog(() => confirmado = v ?? false),
@@ -279,7 +280,6 @@ class _FicharScreenState extends State<FicharScreen> {
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
                       const SizedBox(height: 14),
-                      // Botones de acción para registrar incidencia y combinaciones
                       Wrap(
                         spacing: 8.0,
                         runSpacing: 8.0,
@@ -295,14 +295,14 @@ class _FicharScreenState extends State<FicharScreen> {
                                 ? () {
                                     Navigator.pop(ctx);
                                     _registrarFichaje(
-                                      'Incidencia',
+                                      'IncidenciaSolo',
                                       incidenciaCodigo: seleccionada!.codigo,
                                       observaciones: txtObservaciones.text.trim(),
+                                      esIncidencia: true,
                                     );
                                   }
                                 : null,
                           ),
-                          // Botón "Registrar y salir" solo si está dentro
                           if (vaUltimaAccion == 'Entrada')
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -314,12 +314,12 @@ class _FicharScreenState extends State<FicharScreen> {
                                         'Incidencia',
                                         incidenciaCodigo: seleccionada!.codigo,
                                         observaciones: txtObservaciones.text.trim(),
+                                        esIncidencia: true,
                                       );
                                       await _registrarFichaje('Salida');
                                     }
                                   : null,
                             ),
-                          // Botón "Registrar y entrar" solo si está fuera
                           if (vaUltimaAccion != 'Entrada')
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -331,6 +331,7 @@ class _FicharScreenState extends State<FicharScreen> {
                                         'Incidencia',
                                         incidenciaCodigo: seleccionada!.codigo,
                                         observaciones: txtObservaciones.text.trim(),
+                                        esIncidencia: true,
                                       );
                                       await _registrarFichaje('Entrada');
                                     }
@@ -349,7 +350,6 @@ class _FicharScreenState extends State<FicharScreen> {
     );
   }
 
-  // Widget para mostrar el temporizador de tiempo trabajado
   Widget _temporizadorWidget() {
     if (vaUltimaAccion != 'Entrada' || _horaEntrada == null) return const SizedBox.shrink();
     String dosCifras(int n) => n.toString().padLeft(2, '0');
@@ -381,18 +381,6 @@ class _FicharScreenState extends State<FicharScreen> {
     final ancho = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.blue),
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            } else {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-            }
-          },
-        ),
         title: const Text('Fichar', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -418,7 +406,6 @@ class _FicharScreenState extends State<FicharScreen> {
               _temporizadorWidget(),
               const SizedBox(height: 20),
 
-              // Botón para fichar entrada
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -430,7 +417,6 @@ class _FicharScreenState extends State<FicharScreen> {
               ),
               const SizedBox(height: 18),
 
-              // Botón para fichar salida
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -442,7 +428,6 @@ class _FicharScreenState extends State<FicharScreen> {
               ),
               const SizedBox(height: 18),
 
-              // Botón para registrar incidencia
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -457,35 +442,9 @@ class _FicharScreenState extends State<FicharScreen> {
                   onPressed: _onIncidencia,
                 ),
               ),
-              const SizedBox(height: 18),
-
-              // Botón para ver el histórico de fichajes
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.history, color: Colors.blue),
-                  label: const Text('Ver mis fichajes', style: TextStyle(color: Colors.blue)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.blue, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => HistoricoScreen(
-                          usuario: usuario,
-                          cifEmpresa: cifEmpresa,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
 
               const SizedBox(height: 30),
 
-              // Muestra la última acción realizada si existe
               if (vaUltimaAccion.isNotEmpty)
                 Text(
                   'Última acción: $vaUltimaAccion',
