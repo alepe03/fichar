@@ -554,52 +554,84 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     );
   }
 }
-
 class FichajesTab extends StatelessWidget {
   const FichajesTab({Key? key}) : super(key: key);
 
   List<SesionTrabajo> _agruparSesiones(List<Historico> registros) {
     List<SesionTrabajo> sesiones = [];
-    Map<String, List<Historico>> registrosPorUsuario = {};
+    Historico? entradaPendiente;
+    List<IncidenciaEnSesion> incidenciasPendientes = [];
 
-    for (var reg in registros) {
-      registrosPorUsuario.putIfAbsent(reg.usuario ?? '', () => []).add(reg);
-    }
+    for (final reg in registros) {
+      if (reg.tipo?.toLowerCase() == 'entrada') {
+        if (entradaPendiente != null) {
+          sesiones.add(SesionTrabajo(
+            entrada: entradaPendiente,
+            salida: null,
+            incidencias: List.of(incidenciasPendientes),
+          ));
+          incidenciasPendientes.clear();
+        }
+        entradaPendiente = reg;
+      } else if (reg.tipo?.toLowerCase() == 'salida') {
+        if (entradaPendiente != null) {
+          sesiones.add(SesionTrabajo(
+            entrada: entradaPendiente,
+            salida: reg,
+            incidencias: List.of(incidenciasPendientes),
+          ));
+          entradaPendiente = null;
+          incidenciasPendientes.clear();
+        } else {
+          sesiones.add(SesionTrabajo(
+            entrada: null,
+            salida: reg,
+            incidencias: [],
+          ));
+        }
+      } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
+        String contexto = 'Sin entrada/salida';
 
-    for (var usuario in registrosPorUsuario.keys) {
-      final registrosUsuario = registrosPorUsuario[usuario]!;
+        // Inversión corregida de contexto para incidencias
+        if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
+          contexto = 'Salida'; // invertido aquí
+        } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
+          contexto = 'Entrada'; // invertido aquí
+        }
 
-      Historico? entradaPendiente;
-      Historico? salidaPendiente;
-      
-
-      for (var reg in registrosUsuario) {
-        if (reg.tipo?.toLowerCase() == 'entrada') {
-          if (entradaPendiente != null) {
-            sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: null));
-          }
-          entradaPendiente = reg;
-          salidaPendiente = null;
-        } else if (reg.tipo?.toLowerCase() == 'salida') {
-          if (entradaPendiente != null) {
-            sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: reg));
-            entradaPendiente = null;
-            salidaPendiente = null;
-          } else {
-            sesiones.add(SesionTrabajo(entrada: null, salida: reg));
-          }
+        if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
+          sesiones.add(SesionTrabajo(
+            entrada: null,
+            salida: null,
+            incidencias: [IncidenciaEnSesion(reg, contexto)],
+          ));
+        } else {
+          incidenciasPendientes.add(IncidenciaEnSesion(reg, contexto));
         }
       }
-      if (entradaPendiente != null) {
-        sesiones.add(SesionTrabajo(entrada: entradaPendiente, salida: null));
+    }
+
+    if (entradaPendiente != null) {
+      sesiones.add(SesionTrabajo(
+        entrada: entradaPendiente,
+        salida: null,
+        incidencias: List.of(incidenciasPendientes),
+      ));
+      incidenciasPendientes.clear();
+    }
+
+    if (incidenciasPendientes.isNotEmpty) {
+      final sinContexto = incidenciasPendientes.where((inc) => inc.contexto == 'Sin entrada/salida').toList();
+      for (var inc in sinContexto) {
+        sesiones.add(SesionTrabajo(
+          entrada: null,
+          salida: null,
+          incidencias: [inc],
+        ));
       }
     }
-    sesiones.sort((a, b) {
-      final fechaA = a.entrada?.fechaEntrada ?? '';
-      final fechaB = b.entrada?.fechaEntrada ?? '';
-      return fechaB.compareTo(fechaA);
-    });
-    return sesiones;
+
+    return sesiones.reversed.toList();
   }
 
   @override
@@ -644,6 +676,21 @@ class FichajesTab extends StatelessWidget {
               }
             }
 
+            String entradaCoords = '-';
+            String salidaCoords = '-';
+
+            final latE = sesion.entrada?.latitud;
+            final lonE = sesion.entrada?.longitud;
+            if (latE != null && lonE != null) {
+              entradaCoords = '$latE, $lonE';
+            }
+
+            final latS = sesion.salida?.latitud;
+            final lonS = sesion.salida?.longitud;
+            if (latS != null && lonS != null) {
+              salidaCoords = '$latS, $lonS';
+            }
+
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -662,6 +709,27 @@ class FichajesTab extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text('Entrada: $entradaStr'),
                     Text('Salida: $salidaStr'),
+                    Text('Coordenadas entrada: $entradaCoords'),
+                    Text('Coordenadas salida: $salidaCoords'),
+                    if (sesion.incidencias.isNotEmpty)
+                      ...sesion.incidencias.map((inc) => Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                    '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                    ' — ${inc.contexto}',
+                                    style: const TextStyle(color: Colors.orange),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
                     if (tiempoTrabajado.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
@@ -678,12 +746,26 @@ class FichajesTab extends StatelessWidget {
   }
 }
 
+// Modelos necesarios
+
 class SesionTrabajo {
   final Historico? entrada;
   final Historico? salida;
-
-  SesionTrabajo({this.entrada, this.salida});
+  final List<IncidenciaEnSesion> incidencias;
+  SesionTrabajo({
+    required this.entrada,
+    required this.salida,
+    required this.incidencias,
+  });
 }
+
+class IncidenciaEnSesion {
+  final Historico incidencia;
+  String contexto; // "Entrada", "Salida", o "Sin entrada/salida"
+  IncidenciaEnSesion(this.incidencia, this.contexto);
+}
+
+
 
 class IncidenciasTab extends StatelessWidget {
   const IncidenciasTab({Key? key}) : super(key: key);

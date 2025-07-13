@@ -25,8 +25,9 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 1,
+      version: 2,  // Incrementamos versión a 2 para migraciones
       onCreate: _createDB, // Llama a la función para crear las tablas
+      onUpgrade: _onUpgrade, // Para migraciones de esquema
     );
     print('[DEBUG][DatabaseHelper] Base de datos abierta/cargada');
     return db;
@@ -89,7 +90,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de histórico de fichajes
+    // Tabla de histórico de fichajes con latitud y longitud
     await db.execute('''
       CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,11 +104,30 @@ class DatabaseHelper {
         nombre_empleado TEXT,
         dni_empleado TEXT,
         id_sucursal TEXT,
-        sincronizado INTEGER NOT NULL DEFAULT 0
+        sincronizado INTEGER NOT NULL DEFAULT 0,
+        latitud REAL,
+        longitud REAL
       )
     ''');
 
     print('[DEBUG][DatabaseHelper] Tablas creadas (si no existían).');
+  }
+
+  // Migraciones para versiones antiguas
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      print('[DEBUG][DatabaseHelper] Migrando DB a versión 2: añadiendo columnas latitud y longitud');
+      try {
+        await db.execute('ALTER TABLE historico ADD COLUMN latitud REAL');
+      } catch (e) {
+        print('[DEBUG][DatabaseHelper] La columna latitud ya existe o error: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE historico ADD COLUMN longitud REAL');
+      } catch (e) {
+        print('[DEBUG][DatabaseHelper] La columna longitud ya existe o error: $e');
+      }
+    }
   }
 
   // -- Insertar fichaje histórico --

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../config.dart'; 
 import '../models/historico.dart'; 
@@ -19,7 +20,31 @@ String nowToMySQL() {
       "${now.second.toString().padLeft(2, '0')}";
 }
 
-// Pantalla principal para fichar (entrada, salida, incidencia)
+// Función para obtener la posición GPS usando Geolocator
+Future<Position?> obtenerPosicion() async {
+  bool servicioActivo = await Geolocator.isLocationServiceEnabled();
+  if (!servicioActivo) {
+    print('El servicio de ubicación está desactivado.');
+    return null;
+  }
+
+  LocationPermission permiso = await Geolocator.checkPermission();
+  if (permiso == LocationPermission.denied) {
+    permiso = await Geolocator.requestPermission();
+    if (permiso == LocationPermission.denied) {
+      print('Permiso de ubicación denegado');
+      return null;
+    }
+  }
+
+  if (permiso == LocationPermission.deniedForever) {
+    print('Permiso de ubicación denegado para siempre.');
+    return null;
+  }
+
+  return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+}
+
 class FicharScreen extends StatefulWidget {
   const FicharScreen({Key? key}) : super(key: key);
 
@@ -30,11 +55,9 @@ class FicharScreen extends StatefulWidget {
 class _FicharScreenState extends State<FicharScreen> {
   final TextEditingController txtObservaciones = TextEditingController();
 
-  // Estado de los botones de entrada/salida
   bool entradaHabilitada = true;
   bool salidaHabilitada = true;
 
-  // Variables de usuario y empresa
   late String cifEmpresa;
   late String token;
   late String usuario;
@@ -43,12 +66,10 @@ class _FicharScreenState extends State<FicharScreen> {
   late String idSucursal;
   String vaUltimaAccion = '';
 
-  // Temporizador para mostrar tiempo trabajado
   Timer? _timer;
   Duration _tiempoTrabajado = Duration.zero;
   DateTime? _horaEntrada;
 
-  // Variables para incidencias
   List<Incidencia> listaIncidencias = [];
   bool cargandoIncidencias = false;
   String? errorIncidencias;
@@ -56,10 +77,9 @@ class _FicharScreenState extends State<FicharScreen> {
   @override
   void initState() {
     super.initState();
-    _loadConfig(); // Carga datos de usuario y empresa al iniciar
+    _loadConfig();
   }
 
-  // Carga la configuración y estado guardado en SharedPreferences
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -125,7 +145,7 @@ class _FicharScreenState extends State<FicharScreen> {
       await prefs.setString('hora_entrada', horaEntrada.toIso8601String());
       _horaEntrada = horaEntrada;
     }
-    if (tipo == 'Salida' || tipo == 'IncidenciaEntrada' || tipo == 'IncidenciaSalida' || tipo == 'IncidenciaSinContexto' || tipo == 'IncidenciaSolo') {
+    if (tipo == 'Salida' || tipo.startsWith('Incidencia')) {
       await prefs.remove('hora_entrada');
       _horaEntrada = null;
     }
@@ -149,7 +169,6 @@ class _FicharScreenState extends State<FicharScreen> {
       if (tipo == 'IncidenciaSolo') {
         tipoParaGuardar = 'IncidenciaSolo';
       } else {
-        // Asignamos contexto según la última acción solo si no es IncidenciaSolo
         if (vaUltimaAccion == 'Entrada') {
           tipoParaGuardar = 'IncidenciaEntrada';
         } else if (vaUltimaAccion == 'Salida') {
@@ -159,6 +178,8 @@ class _FicharScreenState extends State<FicharScreen> {
         }
       }
     }
+
+    Position? pos = await obtenerPosicion();
 
     final historico = Historico(
       id: 0,
@@ -172,6 +193,8 @@ class _FicharScreenState extends State<FicharScreen> {
       nombreEmpleado: nombreEmpleado,
       dniEmpleado: dniEmpleado,
       idSucursal: idSucursal,
+      latitud: pos?.latitude,
+      longitud: pos?.longitude,
     );
 
     await HistoricoService.guardarFichajeLocal(historico);

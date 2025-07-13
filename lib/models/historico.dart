@@ -15,6 +15,9 @@ class Historico {
   final String? idSucursal;        // ID de la sucursal (opcional)
   final bool sincronizado;         // Indica si se envió a la nube
 
+  final double? latitud;           // Latitud del fichaje (opcional)
+  final double? longitud;          // Longitud del fichaje (opcional)
+
   // Constructor principal
   Historico({
     required this.id,
@@ -29,6 +32,8 @@ class Historico {
     this.dniEmpleado,
     this.idSucursal,
     this.sincronizado = false,
+    this.latitud,
+    this.longitud,
   });
 
   /// Constructor desde Map (SQLite/local DB)
@@ -48,6 +53,8 @@ class Historico {
       dniEmpleado: map['dni_empleado']?.toString().isNotEmpty == true ? map['dni_empleado']?.toString() : null,
       idSucursal: map['id_sucursal']?.toString().isNotEmpty == true ? map['id_sucursal']?.toString() : null,
       sincronizado: map['sincronizado'] == 1,
+      latitud: map['latitud'] != null ? double.tryParse(map['latitud'].toString()) : null,
+      longitud: map['longitud'] != null ? double.tryParse(map['longitud'].toString()) : null,
     );
   }
 
@@ -67,6 +74,8 @@ class Historico {
       dniEmpleado: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
       idSucursal: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
       sincronizado: true,
+      latitud: parts.length > 11 && parts[11].isNotEmpty ? double.tryParse(parts[11]) : null,
+      longitud: parts.length > 12 && parts[12].isNotEmpty ? double.tryParse(parts[12]) : null,
     );
   }
 
@@ -85,6 +94,8 @@ class Historico {
       'dni_empleado'     : dniEmpleado,
       'id_sucursal'      : idSucursal,
       'sincronizado'     : sincronizado ? 1 : 0,
+      'latitud'          : latitud,
+      'longitud'         : longitud,
     };
   }
 
@@ -102,6 +113,8 @@ class Historico {
       'dni_empleado'     : dniEmpleado,
       'id_sucursal'      : idSucursal,
       'sincronizado'     : sincronizado ? 1 : 0,
+      'latitud'          : latitud,
+      'longitud'         : longitud,
     };
   }
 }
@@ -127,6 +140,13 @@ extension HistoricoPhp on Historico {
     // Si el fichaje es de tipo incidencia, enviamos el código de incidencia
     if (tipo?.toLowerCase() == 'incidencia' && incidenciaCodigo != null && incidenciaCodigo!.isNotEmpty) {
       map['incidencia_codigo'] = incidenciaCodigo!;
+    }
+    // Enviamos latitud y longitud si existen
+    if (latitud != null) {
+      map['latitud'] = latitud.toString();
+    }
+    if (longitud != null) {
+      map['longitud'] = longitud.toString();
     }
     return map;
   }
