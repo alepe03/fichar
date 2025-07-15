@@ -37,69 +37,34 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildIcon(IconData icon, bool selected) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          color: selected ? Colors.blue : Colors.grey[600],
-        ),
-        const SizedBox(height: 4),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: selected ? Colors.blue : Colors.transparent,
-            shape: BoxShape.circle,
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // Importante para que la barra se superponga sin cortar
       body: _screens[_selectedIndex],
-
-      bottomNavigationBar: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(40),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            GestureDetector(
-              onTap: () => _onItemTapped(0),
-              behavior: HitTestBehavior.opaque,
-              child: _buildIcon(Icons.check_box_outlined, _selectedIndex == 0),
-            ),
-            GestureDetector(
-              onTap: () => _onItemTapped(1),
-              behavior: HitTestBehavior.opaque,
-              child: _buildIcon(Icons.login, _selectedIndex == 1),
-            ),
-            GestureDetector(
-              onTap: () => _onItemTapped(2),
-              behavior: HitTestBehavior.opaque,
-              child: _buildIcon(Icons.history, _selectedIndex == 2),
-            ),
-          ],
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        backgroundColor: Colors.white,
+        elevation: 0, // sin sombra
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey[600],
+        showSelectedLabels: false,
+        showUnselectedLabels: false,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.check_box_outlined, size: 28),
+            label: 'Fichar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.login, size: 28),
+            label: 'Login',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history, size: 28),
+            label: 'Histórico',
+          ),
+        ],
       ),
     );
   }

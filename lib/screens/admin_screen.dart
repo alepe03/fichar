@@ -1,6 +1,13 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+
 
 import '../models/empleado.dart';
 import '../models/historico.dart';
@@ -8,6 +15,7 @@ import '../models/incidencia.dart';
 import '../db/database_helper.dart';
 import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
+
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
@@ -278,7 +286,7 @@ class UsuariosTab extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 80.0), // Mueve el botón arriba para que no tape la barra inferior si hay
+            padding: const EdgeInsets.only(bottom: 0), // Mueve el botón arriba para que no tape la barra inferior si hay
             child: FloatingActionButton.extended(
               icon: const Icon(Icons.person_add, color: Colors.white),
               label: const Text(
@@ -554,8 +562,55 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     );
   }
 }
-class FichajesTab extends StatelessWidget {
+class FichajesTab extends StatefulWidget {
   const FichajesTab({Key? key}) : super(key: key);
+
+  @override
+  State<FichajesTab> createState() => _FichajesTabState();
+}
+
+class _FichajesTabState extends State<FichajesTab> {
+  int _selectedYear = DateTime.now().year;
+  int _selectedMonth = DateTime.now().month;
+  String? _selectedUsuario;
+
+  List<DropdownMenuItem<int>> _buildYears() {
+    final now = DateTime.now();
+    final years = List.generate(6, (i) => now.year - i);
+    return years.map((y) => DropdownMenuItem<int>(value: y, child: Text('$y'))).toList();
+  }
+
+  List<DropdownMenuItem<int>> _buildMonths() {
+    return List.generate(12, (i) => i + 1)
+        .map((m) => DropdownMenuItem<int>(value: m, child: Text(m.toString().padLeft(2, '0'))))
+        .toList();
+  }
+
+  List<DropdownMenuItem<String?>> _buildUsuarios(List<Empleado> empleados) {
+    return [
+      const DropdownMenuItem<String?>(
+        value: null,
+        child: Text('Todos los empleados'),
+      ),
+      ...empleados.map(
+        (e) => DropdownMenuItem<String?>(
+          value: e.usuario,
+          child: Text(e.nombre ?? e.usuario),
+        ),
+      ),
+    ];
+  }
+
+  List<Historico> _filtrarRegistros(List<Historico> registros) {
+    return registros.where((reg) {
+      if (_selectedUsuario != null && reg.usuario != _selectedUsuario) return false;
+      final fechaStr = (reg.tipo?.toLowerCase() == 'salida') ? reg.fechaSalida : reg.fechaEntrada;
+      if (fechaStr == null || fechaStr.isEmpty) return false;
+      final dt = DateTime.tryParse(fechaStr);
+      if (dt == null) return false;
+      return dt.year == _selectedYear && dt.month == _selectedMonth;
+    }).toList();
+  }
 
   List<SesionTrabajo> _agruparSesiones(List<Historico> registros) {
     List<SesionTrabajo> sesiones = [];
@@ -591,14 +646,11 @@ class FichajesTab extends StatelessWidget {
         }
       } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
         String contexto = 'Sin entrada/salida';
-
-        // Inversión corregida de contexto para incidencias
         if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
-          contexto = 'Salida'; // invertido aquí
+          contexto = 'Salida';
         } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
-          contexto = 'Entrada'; // invertido aquí
+          contexto = 'Entrada';
         }
-
         if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
           sesiones.add(SesionTrabajo(
             entrada: null,
@@ -634,6 +686,118 @@ class FichajesTab extends StatelessWidget {
     return sesiones.reversed.toList();
   }
 
+  Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) {
+          return [
+            pw.Header(level: 0, child: pw.Text('Fichajes filtrados', style: pw.TextStyle(fontSize: 24))),
+            pw.Table.fromTextArray(
+              headers: [
+                'Empleado',
+                'DNI',
+                'Entrada',
+                'Salida',
+                'Coordenadas Entrada',
+                'Coordenadas Salida',
+                'Tiempo trabajado',
+                'Incidencias'
+              ],
+              data: sesiones.map((sesion) {
+                final usuario = sesion.entrada?.usuario ?? sesion.salida?.usuario ??
+                    (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
+                final empleado = usuario != null ? mapaEmpleados[usuario] : null;
+
+                final entradaStr = sesion.entrada?.fechaEntrada ?? '-';
+                final salidaStr = sesion.salida?.fechaSalida ?? '-';
+
+                final entradaCoords = (sesion.entrada?.latitud != null && sesion.entrada?.longitud != null)
+                    ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
+                    : '-';
+
+                final salidaCoords = (sesion.salida?.latitud != null && sesion.salida?.longitud != null)
+                    ? '${sesion.salida!.latitud}, ${sesion.salida!.longitud}'
+                    : '-';
+
+                String tiempoTrabajado = '';
+                if (sesion.entrada != null && sesion.salida != null) {
+                  final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
+                  final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
+                  if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
+                    final duracion = dtSalida.difference(dtEntrada);
+                    final horas = duracion.inHours.toString().padLeft(2, '0');
+                    final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
+                    tiempoTrabajado = '$horas:$minutos h';
+                  }
+                }
+
+                final incidenciasText = sesion.incidencias.isNotEmpty
+                    ? sesion.incidencias.map((inc) {
+                        final c = inc.incidencia.incidenciaCodigo ?? '-';
+                        final o = inc.incidencia.observaciones ?? '';
+                        return '$c${o.isNotEmpty ? ' ($o)' : ''}';
+                      }).join(', ')
+                    : '-';
+
+                return [
+                  empleado?.nombre ?? usuario ?? 'Desconocido',
+                  empleado?.dni ?? '-',
+                  entradaStr,
+                  salidaStr,
+                  entradaCoords,
+                  salidaCoords,
+                  tiempoTrabajado.isNotEmpty ? tiempoTrabajado : '-',
+                  incidenciasText,
+                ];
+              }).toList(),
+            ),
+          ];
+        },
+      ),
+    );
+
+    return pdf;
+  }
+
+  Future<String> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final fileName = 'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf';
+    final filePath = '${dir.path}/$fileName';
+    final file = File(filePath);
+    await file.writeAsBytes(pdfBytes);
+    return filePath;
+  }
+
+  Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados) async {
+    try {
+      final pdf = await _crearPdf(sesiones, mapaEmpleados);
+      final pdfBytes = await pdf.save();
+      final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF guardado en: $rutaGuardado')),
+        );
+      }
+
+      // Abrir el PDF automáticamente después de guardarlo
+      final resultado = await OpenFile.open(rutaGuardado);
+      if (resultado.type != ResultType.done && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir el PDF automáticamente.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar PDF: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminProvider>(
@@ -644,109 +808,231 @@ class FichajesTab extends StatelessWidget {
           );
         }
 
+        final registrosFiltrados = _filtrarRegistros(provider.historicos);
+        final sesiones = _agruparSesiones(registrosFiltrados);
+
         final Map<String, Empleado> mapaEmpleados = {
           for (var e in provider.empleados) e.usuario: e
         };
 
-        final sesiones = _agruparSesiones(provider.historicos);
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: sesiones.length,
-          itemBuilder: (context, index) {
-            final sesion = sesiones[index];
-            final empleado = sesion.entrada != null
-                ? mapaEmpleados[sesion.entrada!.usuario]
-                : sesion.salida != null
-                    ? mapaEmpleados[sesion.salida!.usuario]
-                    : null;
-
-            String entradaStr = sesion.entrada?.fechaEntrada ?? '-';
-            String salidaStr = sesion.salida?.fechaSalida ?? '-';
-
-            String tiempoTrabajado = '';
-            if (sesion.entrada != null && sesion.salida != null) {
-              final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
-              final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
-              if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
-                final duracion = dtSalida.difference(dtEntrada);
-                final horas = duracion.inHours.toString().padLeft(2, '0');
-                final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
-                tiempoTrabajado = '$horas:$minutos h';
-              }
-            }
-
-            String entradaCoords = '-';
-            String salidaCoords = '-';
-
-            final latE = sesion.entrada?.latitud;
-            final lonE = sesion.entrada?.longitud;
-            if (latE != null && lonE != null) {
-              entradaCoords = '$latE, $lonE';
-            }
-
-            final latS = sesion.salida?.latitud;
-            final lonS = sesion.salida?.longitud;
-            if (latS != null && lonS != null) {
-              salidaCoords = '$latS, $lonS';
-            }
-
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      empleado != null
-                          ? '${empleado.nombre ?? sesion.entrada?.usuario ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
-                          : sesion.entrada?.usuario ?? sesion.salida?.usuario ?? 'Usuario desconocido',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(height: 6),
-                    Text('Entrada: $entradaStr'),
-                    Text('Salida: $salidaStr'),
-                    Text('Coordenadas entrada: $entradaCoords'),
-                    Text('Coordenadas salida: $salidaCoords'),
-                    if (sesion.incidencias.isNotEmpty)
-                      ...sesion.incidencias.map((inc) => Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                    '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                    ' — ${inc.contexto}',
-                                    style: const TextStyle(color: Colors.orange),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )),
-                    if (tiempoTrabajado.isNotEmpty)
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text('Tiempo trabajado: $tiempoTrabajado', style: const TextStyle(color: kPrimaryBlue)),
+                        padding: const EdgeInsets.only(right: 12),
+                        child: DropdownButton<int>(
+                          value: _selectedYear,
+                          items: _buildYears(),
+                          onChanged: (v) => setState(() {
+                            _selectedYear = v!;
+                          }),
+                        ),
                       ),
-                  ],
-                ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: DropdownButton<int>(
+                          value: _selectedMonth,
+                          items: _buildMonths(),
+                          onChanged: (v) => setState(() {
+                            _selectedMonth = v!;
+                          }),
+                        ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: DropdownButton<String?>(
+                            isExpanded: true,
+                            underline: const SizedBox(),
+                            value: _selectedUsuario,
+                            items: _buildUsuarios(provider.empleados),
+                            onChanged: (v) => setState(() {
+                              _selectedUsuario = v;
+                            }),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.picture_as_pdf),
+                        label: const Text('Exportar PDF'),
+                        onPressed: () => _exportarPdfDescargar(sesiones, mapaEmpleados),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryBlue,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: sesiones.isEmpty
+                  ? const Center(child: Text('No hay fichajes para el filtro seleccionado.'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: sesiones.length,
+                      itemBuilder: (context, index) {
+                        final sesion = sesiones[index];
+
+                        final esSoloIncidencia = sesion.entrada == null && sesion.salida == null;
+
+                        Empleado? empleado;
+                        String? usuarioIncidencia;
+
+                        if (esSoloIncidencia && sesion.incidencias.isNotEmpty) {
+                          usuarioIncidencia = sesion.incidencias.first.incidencia.usuario;
+                          empleado = usuarioIncidencia != null ? mapaEmpleados[usuarioIncidencia] : null;
+                        } else {
+                          final usuarioSesion = sesion.entrada?.usuario ?? sesion.salida?.usuario;
+                          empleado = usuarioSesion != null ? mapaEmpleados[usuarioSesion] : null;
+                        }
+
+                        if (esSoloIncidencia) {
+                          return Card(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 3,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    empleado != null
+                                        ? '${empleado.nombre ?? usuarioIncidencia ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
+                                        : usuarioIncidencia ?? 'Usuario desconocido',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...sesion.incidencias.map((inc) => Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                                '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                                ' — ${inc.contexto}',
+                                                style: const TextStyle(color: Colors.orange),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )),
+                                ],
+                              ),
+                            ),
+                          );
+                        } else {
+                          final entradaStr = sesion.entrada?.fechaEntrada ?? '-';
+                          final salidaStr = sesion.salida?.fechaSalida ?? '-';
+
+                          String tiempoTrabajado = '';
+                          if (sesion.entrada != null && sesion.salida != null) {
+                            final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
+                            final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
+                            if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
+                              final duracion = dtSalida.difference(dtEntrada);
+                              final horas = duracion.inHours.toString().padLeft(2, '0');
+                              final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
+                              tiempoTrabajado = '$horas:$minutos h';
+                            }
+                          }
+
+                          String entradaCoords = '-';
+                          String salidaCoords = '-';
+
+                          final latE = sesion.entrada?.latitud;
+                          final lonE = sesion.entrada?.longitud;
+                          if (latE != null && lonE != null) {
+                            entradaCoords = '$latE, $lonE';
+                          }
+
+                          final latS = sesion.salida?.latitud;
+                          final lonS = sesion.salida?.longitud;
+                          if (latS != null && lonS != null) {
+                            salidaCoords = '$latS, $lonS';
+                          }
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 3,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    empleado != null
+                                        ? '${empleado.nombre ?? sesion.entrada?.usuario ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
+                                        : sesion.entrada?.usuario ?? sesion.salida?.usuario ?? 'Usuario desconocido',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text('Entrada: $entradaStr'),
+                                  Text('Salida: $salidaStr'),
+                                  Text('Coordenadas entrada: $entradaCoords'),
+                                  Text('Coordenadas salida: $salidaCoords'),
+                                  if (sesion.incidencias.isNotEmpty)
+                                    ...sesion.incidencias.map((inc) => Padding(
+                                          padding: const EdgeInsets.only(top: 6),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                                  '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                                  ' — ${inc.contexto}',
+                                                  style: const TextStyle(color: Colors.orange),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )),
+                                  if (tiempoTrabajado.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Text('Tiempo trabajado: $tiempoTrabajado',
+                                          style: const TextStyle(color: kPrimaryBlue)),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+            ),
+          ],
         );
       },
     );
   }
 }
-
-// Modelos necesarios
 
 class SesionTrabajo {
   final Historico? entrada;
@@ -764,8 +1050,6 @@ class IncidenciaEnSesion {
   String contexto; // "Entrada", "Salida", o "Sin entrada/salida"
   IncidenciaEnSesion(this.incidencia, this.contexto);
 }
-
-
 
 class IncidenciasTab extends StatelessWidget {
   const IncidenciasTab({Key? key}) : super(key: key);
@@ -807,7 +1091,7 @@ class IncidenciasTab extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 80.0), // Igual que UsuariosTab para evitar tapado
+            padding: const EdgeInsets.only(bottom: 0), // Igual que UsuariosTab para evitar tapado
             child: FloatingActionButton.extended(
               icon: const Icon(Icons.add_alert, color: Colors.white),
               label: const Text(
