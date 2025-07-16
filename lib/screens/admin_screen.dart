@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:intl/intl.dart';
 
 
 import '../models/empleado.dart';
@@ -686,6 +687,13 @@ class _FichajesTabState extends State<FichajesTab> {
     return sesiones.reversed.toList();
   }
 
+  String formatFecha(String? fechaStr) {
+    if (fechaStr == null || fechaStr.isEmpty) return '-';
+    final dt = DateTime.tryParse(fechaStr);
+    if (dt == null) return '-';
+    return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+  }
+
   Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados) async {
     final pdf = pw.Document();
 
@@ -710,8 +718,8 @@ class _FichajesTabState extends State<FichajesTab> {
                     (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
                 final empleado = usuario != null ? mapaEmpleados[usuario] : null;
 
-                final entradaStr = sesion.entrada?.fechaEntrada ?? '-';
-                final salidaStr = sesion.salida?.fechaSalida ?? '-';
+                final entradaStr = formatFecha(sesion.entrada?.fechaEntrada);
+                final salidaStr = formatFecha(sesion.salida?.fechaSalida);
 
                 final entradaCoords = (sesion.entrada?.latitud != null && sesion.entrada?.longitud != null)
                     ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
@@ -944,8 +952,8 @@ class _FichajesTabState extends State<FichajesTab> {
                             ),
                           );
                         } else {
-                          final entradaStr = sesion.entrada?.fechaEntrada ?? '-';
-                          final salidaStr = sesion.salida?.fechaSalida ?? '-';
+                          final entradaStr = formatFecha(sesion.entrada?.fechaEntrada);
+                          final salidaStr = formatFecha(sesion.salida?.fechaSalida);
 
                           String tiempoTrabajado = '';
                           if (sesion.entrada != null && sesion.salida != null) {

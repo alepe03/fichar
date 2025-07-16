@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';  // Import para formateo de fechas
 import '../models/historico.dart';
 import '../services/historico_service.dart';
 
@@ -167,6 +168,14 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     return sesiones.reversed.toList();
   }
 
+  // Función para formatear fecha en pantalla
+  String formatFecha(String? fechaStr) {
+    if (fechaStr == null || fechaStr.isEmpty) return '--';
+    final dt = DateTime.tryParse(fechaStr);
+    if (dt == null) return '--';
+    return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+  }
+
   @override
   Widget build(BuildContext context) {
     final sesiones = _agruparSesiones(registros);
@@ -250,8 +259,8 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                             );
                           }
 
-                          final entrada = s.entrada?.fechaEntrada ?? '--';
-                          final salida = s.salida?.fechaSalida ?? '--';
+                          final entrada = formatFecha(s.entrada?.fechaEntrada);
+                          final salida = formatFecha(s.salida?.fechaSalida);
 
                           String tiempo = '';
                           if (s.entrada != null && s.salida != null) {

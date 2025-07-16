@@ -1,10 +1,11 @@
 import 'package:fichar/screens/home_screen_admin.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart'; 
+import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import 'admin_screen.dart';
-import 'home_screen.dart';  // Importa aquí el HomeScreen
+import 'home_screen.dart'; // Importa aquí el HomeScreen
+import 'vcif_screen.dart'; // Importa la pantalla del CIF para navegar
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,10 +23,14 @@ class _LoginScreenState extends State<LoginScreen> {
   bool vaRecordarUsuario = false;
   String? vaErrorMessage;
 
+  List<String> listaCifs = [];
+  String? cifSeleccionado;
+
   @override
   void initState() {
     super.initState();
     _loadRememberedCredentials();
+    _loadCifs();
   }
 
   Future<void> _loadRememberedCredentials() async {
@@ -42,6 +47,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _loadCifs() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? cifs = prefs.getStringList('cif_empresa_list');
+    String? ultimoCif = prefs.getString('cif_empresa');
+
+    if (cifs != null && cifs.isNotEmpty) {
+      setState(() {
+        listaCifs = cifs;
+        // Si el último cif guardado existe en la lista, seleccionarlo, si no seleccionar el primero
+        if (ultimoCif != null && listaCifs.contains(ultimoCif)) {
+          cifSeleccionado = ultimoCif;
+        } else {
+          cifSeleccionado = listaCifs.first;
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
     txtVLoginUsuario.dispose();
@@ -53,26 +76,24 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    if (cifSeleccionado == null || cifSeleccionado!.isEmpty) {
+      setState(() {
+        vaErrorMessage = 'Debes seleccionar un CIF.';
+      });
+      return;
+    }
+
     setState(() {
       vaIsLoading = true;
       vaErrorMessage = null;
     });
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    final cifEmpresa = prefs.getString('cif_empresa') ?? '';
-
-    if (cifEmpresa.isEmpty) {
-      setState(() {
-        vaErrorMessage = "No se ha encontrado el CIF de la empresa. Vuelve a la pantalla anterior.";
-        vaIsLoading = false;
-      });
-      return;
-    }
 
     final empleado = await AuthService.loginLocal(
       txtVLoginUsuario.text.trim(),
       txtVLoginPassword.text,
-      cifEmpresa,
+      cifSeleccionado!,
     );
 
     if (empleado != null) {
@@ -84,11 +105,13 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove('password_recordado');
       }
 
+      // Guardamos el CIF seleccionado para recordar la última selección
+      await prefs.setString('cif_empresa', cifSeleccionado!);
+
       await prefs.setString('usuario', empleado.usuario);
       await prefs.setString('nombre_empleado', empleado.nombre ?? '');
       await prefs.setString('dni_empleado', empleado.dni ?? '');
       await prefs.setString('id_sucursal', '');
-      await prefs.setString('cif_empresa', empleado.cifEmpresa);
       await prefs.setString('token', '123456.abcd');
       print('[LOGIN] Token global guardado: 123456.abcd');
 
@@ -104,12 +127,12 @@ class _LoginScreenState extends State<LoginScreen> {
               create: (_) => AdminProvider(empleado.cifEmpresa),
               child: HomeScreenAdmin(
                 usuario: empleado.usuario,
-                cifEmpresa: empleado.cifEmpresa),
+                cifEmpresa: empleado.cifEmpresa,
+              ),
             ),
           ),
         );
       } else {
-        // Aquí el cambio importante: navegar al HomeScreen con la barra inferior y pasando datos
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -144,6 +167,16 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.blue),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.blue),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const VCifScreen()),
+            );
+          },
+          tooltip: 'Volver al CIF',
+        ),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -172,7 +205,41 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 100,
                     fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
+
+                  if (listaCifs.isEmpty)
+                    const Text(
+                      'No hay CIFs disponibles. Ve a la pantalla anterior para añadirlos.',
+                      style: TextStyle(color: Colors.red),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: 'Selecciona CIF',
+                        border: OutlineInputBorder(),
+                      ),
+                      value: cifSeleccionado,
+                      items: listaCifs
+                          .map((cif) => DropdownMenuItem(
+                                value: cif,
+                                child: Text(cif),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          cifSeleccionado = val;
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Selecciona un CIF';
+                        }
+                        return null;
+                      },
+                    ),
+
+                  const SizedBox(height: 20),
+
                   TextFormField(
                     controller: txtVLoginUsuario,
                     decoration: const InputDecoration(
