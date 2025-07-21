@@ -9,7 +9,6 @@ import '../models/incidencia.dart';
 import '../services/historico_service.dart'; 
 import '../services/incidencia_service.dart'; 
 
-// Función para obtener la fecha/hora actual en formato MySQL
 String nowToMySQL() {
   final now = DateTime.now();
   return "${now.year.toString().padLeft(4, '0')}-"
@@ -20,7 +19,6 @@ String nowToMySQL() {
       "${now.second.toString().padLeft(2, '0')}";
 }
 
-// Función para obtener la posición GPS usando Geolocator
 Future<Position?> obtenerPosicion() async {
   bool servicioActivo = await Geolocator.isLocationServiceEnabled();
   if (!servicioActivo) {
@@ -66,9 +64,9 @@ class _FicharScreenState extends State<FicharScreen> {
   late String idSucursal;
   String vaUltimaAccion = '';
 
-  Timer? _timer;
-  Duration _tiempoTrabajado = Duration.zero;
+  final ValueNotifier<Duration> _tiempoTrabajadoNotifier = ValueNotifier(Duration.zero);
   DateTime? _horaEntrada;
+  Timer? _timer;
 
   List<Incidencia> listaIncidencias = [];
   bool cargandoIncidencias = false;
@@ -82,73 +80,83 @@ class _FicharScreenState extends State<FicharScreen> {
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
+
+    final nuevaCifEmpresa     = prefs.getString('cif_empresa')     ?? '';
+    final nuevoToken          = prefs.getString('token')           ?? '';
+    final nuevoUsuario        = prefs.getString('usuario')         ?? '';
+    final nuevoNombreEmpleado = prefs.getString('nombre_empleado') ?? '';
+    final nuevoDniEmpleado    = prefs.getString('dni_empleado')    ?? '';
+    final nuevoIdSucursal     = prefs.getString('id_sucursal')     ?? '';
+    final nuevaUltimaAccion   = prefs.getString('ultimo_tipo_fichaje') ?? '';
+    final horaEntradaStr = prefs.getString('hora_entrada');
+
+    DateTime? nuevaHoraEntrada;
+    if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
+      nuevaHoraEntrada = DateTime.tryParse(horaEntradaStr);
+    }
+
     setState(() {
-      cifEmpresa     = prefs.getString('cif_empresa')     ?? '';
-      token          = prefs.getString('token')           ?? '';
-      usuario        = prefs.getString('usuario')         ?? '';
-      nombreEmpleado = prefs.getString('nombre_empleado') ?? '';
-      dniEmpleado    = prefs.getString('dni_empleado')    ?? '';
-      idSucursal     = prefs.getString('id_sucursal')     ?? '';
-      vaUltimaAccion = prefs.getString('ultimo_tipo_fichaje') ?? '';
-      String? horaEntradaStr = prefs.getString('hora_entrada');
-      if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
-        _horaEntrada = DateTime.tryParse(horaEntradaStr);
-      } else {
-        _horaEntrada = null;
-      }
+      cifEmpresa = nuevaCifEmpresa;
+      token = nuevoToken;
+      usuario = nuevoUsuario;
+      nombreEmpleado = nuevoNombreEmpleado;
+      dniEmpleado = nuevoDniEmpleado;
+      idSucursal = nuevoIdSucursal;
+      vaUltimaAccion = nuevaUltimaAccion;
+      _horaEntrada = nuevaHoraEntrada;
     });
+
     _calcularEstadoBotones();
     _initTemporizador();
   }
 
   void _calcularEstadoBotones() {
+    final nuevaEntradaHabilitada = vaUltimaAccion != 'Entrada';
+    final nuevaSalidaHabilitada = vaUltimaAccion == 'Entrada';
     setState(() {
-      if (vaUltimaAccion == 'Entrada') {
-        entradaHabilitada = false;
-        salidaHabilitada = true;
-      } else if (vaUltimaAccion == 'Salida') {
-        entradaHabilitada = true;
-        salidaHabilitada = false;
-      } else {
-        entradaHabilitada = true;
-        salidaHabilitada = true;
-      }
+      entradaHabilitada = nuevaEntradaHabilitada;
+      salidaHabilitada = nuevaSalidaHabilitada;
     });
   }
 
   void _initTemporizador() {
     _timer?.cancel();
+
     if (vaUltimaAccion == 'Entrada' && _horaEntrada != null) {
-      _actualizaTiempoTrabajado();
+      _actualizarTiempoTrabajado();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        _actualizaTiempoTrabajado();
+        _actualizarTiempoTrabajado();
       });
     } else {
-      setState(() {
-        _tiempoTrabajado = Duration.zero;
-      });
+      _tiempoTrabajadoNotifier.value = Duration.zero;
     }
   }
 
-  void _actualizaTiempoTrabajado() {
+  void _actualizarTiempoTrabajado() {
     if (_horaEntrada == null) return;
     final ahora = DateTime.now();
-    setState(() {
-      _tiempoTrabajado = ahora.difference(_horaEntrada!);
-    });
+    final diferencia = ahora.difference(_horaEntrada!);
+    if (_tiempoTrabajadoNotifier.value.inSeconds != diferencia.inSeconds) {
+      _tiempoTrabajadoNotifier.value = diferencia;
+    }
   }
 
   Future<void> _setUltimaAccion(String tipo, {DateTime? horaEntrada}) async {
     final prefs = await SharedPreferences.getInstance();
+
     await prefs.setString('ultimo_tipo_fichaje', tipo);
+
     if (tipo == 'Entrada' && horaEntrada != null) {
       await prefs.setString('hora_entrada', horaEntrada.toIso8601String());
       _horaEntrada = horaEntrada;
     }
-    if (tipo == 'Salida' || tipo.startsWith('Incidencia')) {
+
+    // Solo borramos hora_entrada si es Salida o incidencia que NO sea "IncidenciaSolo"
+    if (tipo == 'Salida' || (tipo.startsWith('Incidencia') && tipo != 'IncidenciaSolo')) {
       await prefs.remove('hora_entrada');
       _horaEntrada = null;
     }
+
     setState(() => vaUltimaAccion = tipo);
     _calcularEstadoBotones();
     _initTemporizador();
@@ -164,7 +172,6 @@ class _FicharScreenState extends State<FicharScreen> {
     final ahora = DateTime.now();
 
     String tipoParaGuardar = tipo;
-
     if (esIncidencia) {
       if (tipo == 'IncidenciaSolo') {
         tipoParaGuardar = 'IncidenciaSolo';
@@ -217,16 +224,20 @@ class _FicharScreenState extends State<FicharScreen> {
 
     if (tipo == 'Entrada') {
       await _setUltimaAccion(tipo, horaEntrada: ahora);
-    } else {
+    } else if (tipo != 'IncidenciaSolo') {
       await _setUltimaAccion(tipoParaGuardar);
     }
+    // NO actualizamos ni cerramos fichaje si es IncidenciaSolo
   }
 
   void _onEntrada() => _registrarFichaje('Entrada');
-  void _onSalida()  => _registrarFichaje('Salida');
+  void _onSalida() => _registrarFichaje('Salida');
 
   Future<void> _cargarIncidencias() async {
-    setState(() { cargandoIncidencias = true; errorIncidencias = null; });
+    setState(() {
+      cargandoIncidencias = true;
+      errorIncidencias = null;
+    });
     try {
       await IncidenciaService.descargarYGuardarIncidencias(cifEmpresa, token, BASE_URL);
       listaIncidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
@@ -239,7 +250,9 @@ class _FicharScreenState extends State<FicharScreen> {
         errorIncidencias = 'No se pueden cargar incidencias.';
       }
     }
-    setState(() { cargandoIncidencias = false; });
+    setState(() {
+      cargandoIncidencias = false;
+    });
   }
 
   void _onIncidencia() async {
@@ -271,10 +284,12 @@ class _FicharScreenState extends State<FicharScreen> {
                           ? const CircularProgressIndicator()
                           : DropdownButtonFormField<Incidencia>(
                               value: seleccionada,
-                              items: listaIncidencias.map((inc) => DropdownMenuItem(
-                                value: inc,
-                                child: Text(inc.descripcion ?? inc.codigo),
-                              )).toList(),
+                              items: listaIncidencias
+                                  .map((inc) => DropdownMenuItem(
+                                        value: inc,
+                                        child: Text(inc.descripcion ?? inc.codigo),
+                                      ))
+                                  .toList(),
                               onChanged: (valor) => setStateDialog(() => seleccionada = valor),
                               decoration: const InputDecoration(
                                 labelText: 'Tipo de incidencia',
@@ -313,6 +328,9 @@ class _FicharScreenState extends State<FicharScreen> {
                             onPressed: () => Navigator.pop(ctx),
                           ),
                           ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                            ),
                             child: const Text('Registrar solo incidencia'),
                             onPressed: (seleccionada != null && confirmado)
                                 ? () {
@@ -328,7 +346,10 @@ class _FicharScreenState extends State<FicharScreen> {
                           ),
                           if (vaUltimaAccion == 'Entrada')
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                              ),
                               child: const Text('Registrar y salir'),
                               onPressed: (seleccionada != null && confirmado)
                                   ? () async {
@@ -345,7 +366,10 @@ class _FicharScreenState extends State<FicharScreen> {
                             ),
                           if (vaUltimaAccion != 'Entrada')
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                              ),
                               child: const Text('Registrar y entrar'),
                               onPressed: (seleccionada != null && confirmado)
                                   ? () async {
@@ -374,21 +398,26 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   Widget _temporizadorWidget() {
-    if (vaUltimaAccion != 'Entrada' || _horaEntrada == null) return const SizedBox.shrink();
-    String dosCifras(int n) => n.toString().padLeft(2, '0');
-    final horas = dosCifras(_tiempoTrabajado.inHours);
-    final minutos = dosCifras(_tiempoTrabajado.inMinutes.remainder(60));
-    final segundos = dosCifras(_tiempoTrabajado.inSeconds.remainder(60));
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Column(
-        children: [
-          const Text("Tiempo trabajado hoy:",
-              style: TextStyle(fontSize: 17, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-          Text("$horas:$minutos:$segundos",
-              style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 2)),
-        ],
-      ),
+    return ValueListenableBuilder<Duration>(
+      valueListenable: _tiempoTrabajadoNotifier,
+      builder: (_, duracion, __) {
+        if (vaUltimaAccion != 'Entrada' || _horaEntrada == null) return const SizedBox.shrink();
+        String dosCifras(int n) => n.toString().padLeft(2, '0');
+        final horas = dosCifras(duracion.inHours);
+        final minutos = dosCifras(duracion.inMinutes.remainder(60));
+        final segundos = dosCifras(duracion.inSeconds.remainder(60));
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            children: [
+              const Text("Tiempo trabajado hoy:",
+                  style: TextStyle(fontSize: 17, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+              Text("$horas:$minutos:$segundos",
+                  style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -396,6 +425,7 @@ class _FicharScreenState extends State<FicharScreen> {
   void dispose() {
     txtObservaciones.dispose();
     _timer?.cancel();
+    _tiempoTrabajadoNotifier.dispose();
     super.dispose();
   }
 

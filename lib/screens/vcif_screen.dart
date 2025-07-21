@@ -48,13 +48,12 @@ class _VCifScreenState extends State<VCifScreen> {
       final url = Uri.parse('$BASE_URL?Code=700&cif_empresa=$cif&Token=$token');
       final response = await http.get(url);
       if (response.statusCode == 200) {
-        // Aquí asumo que si devuelve OK está bien, y si da ERROR no existe
         if (response.body.contains('OK')) {
           return true;
         }
       }
     } catch (e) {
-      // Puedes loguear o manejar error aquí si quieres
+      // Manejo de error opcional
     }
     return false;
   }
@@ -85,7 +84,6 @@ class _VCifScreenState extends State<VCifScreen> {
       etiVCifError = null;
     });
 
-    // Validar CIF en la API antes de añadirlo
     final existe = await validarCifEnServidor(nuevoCif);
     if (!existe) {
       setState(() {
@@ -103,10 +101,11 @@ class _VCifScreenState extends State<VCifScreen> {
 
     try {
       const token = '123456.abcd';
-
-      await EmpleadoService.descargarYGuardarEmpleados(nuevoCif, token, BASE_URL);
-      await SucursalService.descargarYGuardarSucursales(nuevoCif, token, BASE_URL);
-      await IncidenciaService.descargarYGuardarIncidencias(nuevoCif, token, BASE_URL);
+      await Future.wait([
+        EmpleadoService.descargarYGuardarEmpleados(nuevoCif, token, BASE_URL),
+        SucursalService.descargarYGuardarSucursales(nuevoCif, token, BASE_URL),
+        IncidenciaService.descargarYGuardarIncidencias(nuevoCif, token, BASE_URL),
+      ]);
     } catch (e) {
       setState(() {
         etiVCifError = 'Error descargando datos para $nuevoCif: $e';
@@ -134,50 +133,54 @@ class _VCifScreenState extends State<VCifScreen> {
         title: const Text('Modificar CIF'),
         content: TextField(
           controller: controller,
-          maxLength: 10,
           textCapitalization: TextCapitalization.none,
           decoration: const InputDecoration(hintText: 'Nuevo CIF'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              final cifEditado = controller.text.trim();
-              if (cifEditado.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Introduce un CIF válido')),
-                );
-                return;
-              }
-              if (listaCifs.contains(cifEditado) && cifEditado != listaCifs[index]) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('El CIF ya está en la lista')),
-                );
-                return;
-              }
-              // Validar el CIF editado antes de guardar
-              setState(() {
-                vaIsLoading = true;
-                etiVCifError = null;
-              });
-              final existe = await validarCifEnServidor(cifEditado);
-              if (!existe) {
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () async {
+                final cifEditado = controller.text.trim();
+                if (cifEditado.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Introduce un CIF válido')),
+                  );
+                  return;
+                }
+                if (listaCifs.contains(cifEditado) && cifEditado != listaCifs[index]) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('El CIF ya está en la lista')),
+                  );
+                  return;
+                }
+                setState(() {
+                  vaIsLoading = true;
+                  etiVCifError = null;
+                });
+                final existe = await validarCifEnServidor(cifEditado);
+                if (!existe) {
+                  setState(() {
+                    vaIsLoading = false;
+                    etiVCifError = 'El CIF no existe en la base de datos';
+                  });
+                  return;
+                }
+                setState(() {
+                  listaCifs[index] = cifEditado;
+                });
+                await _guardarListaCifs();
                 setState(() {
                   vaIsLoading = false;
-                  etiVCifError = 'El CIF no existe en la base de datos';
                 });
-                return;
-              }
-              setState(() {
-                listaCifs[index] = cifEditado;
-              });
-              await _guardarListaCifs();
-              setState(() {
-                vaIsLoading = false;
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('Guardar'),
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('Guardar'),
+            ),
           ),
         ],
       ),
@@ -187,81 +190,82 @@ class _VCifScreenState extends State<VCifScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('Gestionar CIFs'),
-        actions: [
-          TextButton(
-            onPressed: _irALogin,
-            child: const Text('Continuar al Login', style: TextStyle(color: Colors.white)),
-          )
-        ],
+        // Eliminado botón de acción en el AppBar
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            Image.asset(
-              'assets/images/iconotrivalle.png',
-              width: 120,
-              height: 120,
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(height: 24),
-
-            // Input para nuevo CIF
-            TextField(
-              controller: txtNuevoCifController,
-              decoration: InputDecoration(
-                labelText: 'Nuevo CIF',
-                errorText: etiVCifError,
-                errorStyle: const TextStyle(color: Color(0xFFD32F2F)),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _anadirNuevoCif(),
-              textCapitalization: TextCapitalization.none,
-            ),
-            const SizedBox(height: 12),
-            vaIsLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    onPressed: _anadirNuevoCif,
-                    child: const Text('Añadir CIF'),
-                    style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(40)),
-                  ),
-
-            const SizedBox(height: 24),
-
             Expanded(
-              child: listaCifs.isEmpty
-                  ? const Center(child: Text('No hay CIFs añadidos.'))
-                  : ListView.builder(
-                      itemCount: listaCifs.length,
-                      itemBuilder: (context, index) {
-                        final cif = listaCifs[index];
-                        return Card(
-                          child: ListTile(
-                            title: Text(cif),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () => _editarCif(index),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _borrarCif(index),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/iconotrivalle.png',
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.contain,
                     ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: txtNuevoCifController,
+                      decoration: InputDecoration(
+                        labelText: 'Nuevo CIF',
+                        errorText: etiVCifError,
+                        errorStyle: const TextStyle(color: Color(0xFFD32F2F)),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _anadirNuevoCif(),
+                      textCapitalization: TextCapitalization.none,
+                    ),
+                    const SizedBox(height: 12),
+                    vaIsLoading
+                        ? const CircularProgressIndicator()
+                        : ElevatedButton(
+                            onPressed: _anadirNuevoCif,
+                            child: const Text('Añadir CIF'),
+                            style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(40)),
+                          ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      height: 300,
+                      child: listaCifs.isEmpty
+                          ? const Center(child: Text('No hay CIFs añadidos.'))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: listaCifs.length,
+                              itemBuilder: (context, index) {
+                                final cif = listaCifs[index];
+                                return Card(
+                                  child: ListTile(
+                                    title: Text(cif),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.blue),
+                                          onPressed: () => _editarCif(index),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete, color: Colors.red),
+                                          onPressed: () => _borrarCif(index),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-
-            const SizedBox(height: 16),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

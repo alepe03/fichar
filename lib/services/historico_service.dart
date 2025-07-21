@@ -19,7 +19,6 @@ class HistoricoService {
     String baseUrl,
     String nombreBD,
   ) async {
-    // Valida que la URL base sea correcta
     if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
@@ -27,9 +26,8 @@ class HistoricoService {
     print('--- ENTRA EN guardarFichajeRemoto ---');
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=301');
 
-    // Usa el método del modelo para asegurar que el body tenga TODOS los campos necesarios
     final body = historico.toPhpBody();
-    print('BODY ENVIADO: $body'); // Log para depuración
+    print('BODY ENVIADO: $body');
 
     final response = await http.post(
       url,
@@ -61,24 +59,26 @@ class HistoricoService {
       ),
     );
     print('[DEBUG][HistoricoService.obtenerFichajesUsuario] Encontrados ${maps.length} registros para usuario=$usuario y empresa=$cifEmpresa');
-    // Convierte cada registro del mapa a un objeto Historico
     return maps.map((map) => Historico.fromMap(map)).toList();
   }
 
-  /// Sincroniza los fichajes pendientes guardados localmente.
+  /// Sincroniza los fichajes pendientes guardados localmente, en paralelo
   static Future<void> sincronizarPendientes(
     String token,
     String baseUrl,
     String nombreBD,
   ) async {
     final pendientes = await DatabaseHelper.instance.historicosPendientes();
-    for (final h in pendientes) {
+
+    final futures = pendientes.map((h) async {
       try {
         await guardarFichajeRemoto(h, token, baseUrl, nombreBD);
         await DatabaseHelper.instance.actualizarSincronizado(h.id, true);
       } catch (e) {
         print('Error sincronizando id ${h.id}: $e');
       }
-    }
+    });
+
+    await Future.wait(futures);
   }
 }

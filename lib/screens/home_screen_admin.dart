@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 import 'admin_screen.dart';
+import '../providers/admin_provider.dart'; // Ajusta la ruta según tu proyecto
 
 class HomeScreenAdmin extends StatefulWidget {
   final String usuario;
@@ -27,7 +30,10 @@ class _HomeScreenAdminState extends State<HomeScreenAdmin> {
     _screens = [
       const FicharScreen(),
       const LoginScreen(),
-      AdminScreen(cifEmpresa: widget.cifEmpresa),
+      ChangeNotifierProvider(
+        create: (_) => AdminProvider(widget.cifEmpresa),
+        child: AdminScreen(cifEmpresa: widget.cifEmpresa),
+      ),
     ];
   }
 
@@ -45,7 +51,7 @@ class _HomeScreenAdminState extends State<HomeScreenAdmin> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         backgroundColor: Colors.white,
-        elevation: 0, // sin sombra
+        elevation: 0,
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey[600],
         showSelectedLabels: false,

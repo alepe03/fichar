@@ -1,11 +1,12 @@
-import 'package:fichar/screens/home_screen_admin.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+
 import '../services/auth_service.dart';
-import 'admin_screen.dart';
-import 'home_screen.dart'; // Importa aquí el HomeScreen
-import 'vcif_screen.dart'; // Importa la pantalla del CIF para navegar
+import 'home_screen_admin.dart';  // Cambiado a HomeScreenAdmin
+import 'supervisor_screen.dart';
+import 'vcif_screen.dart';
+import '../providers/admin_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,7 +56,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (cifs != null && cifs.isNotEmpty) {
       setState(() {
         listaCifs = cifs;
-        // Si el último cif guardado existe en la lista, seleccionarlo, si no seleccionar el primero
         if (ultimoCif != null && listaCifs.contains(ultimoCif)) {
           cifSeleccionado = ultimoCif;
         } else {
@@ -105,7 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove('password_recordado');
       }
 
-      // Guardamos el CIF seleccionado para recordar la última selección
       await prefs.setString('cif_empresa', cifSeleccionado!);
 
       await prefs.setString('usuario', empleado.usuario);
@@ -117,14 +116,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      final bool esAdmin = empleado.rol != null && empleado.rol!.toLowerCase() == 'admin';
+      final rol = empleado.rol?.toLowerCase() ?? '';
 
-      if (esAdmin) {
+      if (rol == 'admin') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ChangeNotifierProvider(
-              create: (_) => AdminProvider(empleado.cifEmpresa),
+            builder: (_) => MultiProvider(
+              providers: [
+                ChangeNotifierProvider(create: (_) => AdminProvider(empleado.cifEmpresa)),
+              ],
               child: HomeScreenAdmin(
                 usuario: empleado.usuario,
                 cifEmpresa: empleado.cifEmpresa,
@@ -132,16 +133,17 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         );
-      } else {
+      } else if (rol == 'supervisor') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => HomeScreen(
-              usuario: empleado.usuario,
-              cifEmpresa: empleado.cifEmpresa,
-            ),
+            builder: (_) => SupervisorScreen(cifEmpresa: empleado.cifEmpresa),
           ),
         );
+      } else {
+        setState(() {
+          vaErrorMessage = 'Rol no autorizado.';
+        });
       }
     } else {
       setState(() {

@@ -3,40 +3,44 @@ import '../models/incidencia.dart';
 import '../db/database_helper.dart';                     
 import 'package:sqflite/sqflite.dart';                 
 import '../config.dart';
+import 'package:flutter/foundation.dart'; // Para compute
 
 class IncidenciaService {
+  // Función top-level para parsear CSV en otro isolate
+  static List<Incidencia> parseIncidenciasCsv(String csvBody) {
+    final lines = csvBody.split('\n');
+    if (lines.isNotEmpty) lines.removeAt(0);
+
+    final List<Incidencia> incidencias = [];
+    for (var line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        incidencias.add(Incidencia.fromCsv(line));
+      } catch (e) {
+        print('Error parseando línea CSV de incidencia: $line\nError: $e');
+      }
+    }
+    return incidencias;
+  }
+
   // Descarga y guarda incidencias desde la nube (API PHP)
   static Future<void> descargarYGuardarIncidencias(
       String cifEmpresa, String token, String baseUrl) async {
-    // Valida que la URL base sea correcta
     if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
     const nombreBD = 'qame400';
 
-    // Construye la URL para la petición GET de incidencias
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=400&cif_empresa=$cifEmpresa');
     print('Descargando incidencias desde: $url');
 
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
-      // Si la respuesta es correcta, procesa el CSV recibido
-      final lines = response.body.split('\n');
-      if (lines.isNotEmpty) lines.removeAt(0);
-
-      final List<Incidencia> incidencias = [];
-      for (var line in lines) {
-        if (line.trim().isEmpty) continue;
-        try {
-          incidencias.add(Incidencia.fromCsv(line)); // Parsea cada línea a una Incidencia
-        } catch (e) {
-          print('Error parseando línea CSV de incidencia: $line\nError: $e');
-        }
-      }
+      // Parsear en isolate para no bloquear hilo UI
+      final incidencias = await compute(parseIncidenciasCsv, response.body);
 
       final db = await DatabaseHelper.instance.database;
-      // Borra incidencias antiguas de esa empresa antes de insertar las nuevas
       await db.delete('incidencias', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
       for (var inc in incidencias) {
         await db.insert(
@@ -47,7 +51,6 @@ class IncidenciaService {
       }
       print('Incidencias guardadas correctamente: ${incidencias.length}');
     } else {
-      // Si la respuesta no es 200, lanza una excepción
       throw Exception('Error descargando incidencias: ${response.statusCode}');
     }
   }

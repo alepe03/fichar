@@ -3,175 +3,18 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
 
-
 import '../models/empleado.dart';
 import '../models/historico.dart';
 import '../models/incidencia.dart';
-import '../db/database_helper.dart';
-import '../services/empleado_service.dart';
-import '../services/incidencia_service.dart';
+import '../providers/admin_provider.dart';
 
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
-
-class AdminProvider extends ChangeNotifier {
-  List<Empleado> empleados = [];
-  List<Historico> historicos = [];
-  List<Incidencia> incidencias = [];
-
-  final String cifEmpresa;
-
-  AdminProvider(this.cifEmpresa);
-
-  Future<void> cargarEmpleados() async {
-    final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
-    empleados = maps.map((m) => Empleado.fromMap(m)).toList();
-    notifyListeners();
-  }
-
-  Future<void> cargarHistoricos() async {
-    final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
-    historicos = maps.map((m) => Historico.fromMap(m)).toList();
-    notifyListeners();
-  }
-
-  Future<void> cargarIncidencias() async {
-    incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
-    notifyListeners();
-  }
-
-  Future<String?> addEmpleado(Empleado empleado) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final respuesta = await EmpleadoService.insertarEmpleadoRemoto(empleado: empleado, token: token);
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.insert('empleados', empleado.toMap());
-      await cargarEmpleados();
-      return null;
-    } else {
-      return respuesta;
-    }
-  }
-
-Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
-  final prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('token') ?? '';
-
-  try {
-    final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
-      empleado: empleado,
-      usuarioOriginal: usuarioOriginal,
-      token: token,
-    );
-
-    if (!respuesta.startsWith('OK')) {
-      return respuesta; // Devuelve mensaje de error recibido del servidor
-    }
-
-    // Si OK, actualizamos localmente
-    final db = await DatabaseHelper.instance.database;
-    await db.update(
-      'empleados',
-      empleado.toMap(),
-      where: 'usuario = ? AND cif_empresa = ?',
-      whereArgs: [usuarioOriginal, empleado.cifEmpresa],
-    );
-    await cargarEmpleados();
-    return null;
-  } catch (e) {
-    return 'Error actualizando empleado: $e';
-  }
-}
-
-
-  Future<String?> deleteEmpleado(String usuario) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final respuesta = await EmpleadoService.eliminarEmpleadoRemoto(
-      usuario: usuario,
-      cifEmpresa: cifEmpresa,
-      token: token,
-    );
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete('empleados', where: 'usuario = ? AND cif_empresa = ?', whereArgs: [usuario, cifEmpresa]);
-      await cargarEmpleados();
-      return null;
-    } else {
-      return respuesta;
-    }
-  }
-
-  Future<String?> addIncidencia(Incidencia incidencia) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final respuesta = await IncidenciaService.insertarIncidenciaRemoto(
-      incidencia: incidencia,
-      token: token,
-    );
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.insert('incidencias', incidencia.toMap());
-      await cargarIncidencias();
-      return null;
-    } else {
-      return respuesta;
-    }
-  }
-
-  Future<String?> updateIncidencia(Incidencia incidencia) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final respuesta = await IncidenciaService.actualizarIncidenciaRemoto(
-      incidencia: incidencia,
-      token: token,
-    );
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.update(
-        'incidencias',
-        incidencia.toMap(),
-        where: 'codigo = ? AND cif_empresa = ?',
-        whereArgs: [incidencia.codigo, incidencia.cifEmpresa],
-      );
-      await cargarIncidencias();
-      return null;
-    } else {
-      return respuesta;
-    }
-  }
-
-  Future<String?> deleteIncidencia(String codigo) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final incidencia = incidencias.firstWhere(
-      (inc) => inc.codigo == codigo,
-      orElse: () => Incidencia(codigo: '', cifEmpresa: ''),
-    );
-    final respuesta = await IncidenciaService.eliminarIncidenciaRemoto(
-      codigo: codigo,
-      cifEmpresa: incidencia.cifEmpresa ?? '',
-      token: token,
-    );
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete('incidencias', where: 'codigo = ? AND cif_empresa = ?', whereArgs: [codigo, incidencia.cifEmpresa]);
-      await cargarIncidencias();
-      return null;
-    } else {
-      return respuesta;
-    }
-  }
-}
 
 class AdminScreen extends StatefulWidget {
   final String cifEmpresa;
@@ -196,19 +39,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     });
   }
 
-  // Quitamos botón de salir, por eso no se necesita esta función.
-  // Si quieres, mantén esta función para logout y redirección cuando implementes logout desde otra UI.
-  // void _logout(BuildContext context) async {
-  //   final prefs = await SharedPreferences.getInstance();
-  //   await prefs.clear();
-  //   if (context.mounted) {
-  //     Navigator.of(context).pushAndRemoveUntil(
-  //       MaterialPageRoute(builder: (_) => const LoginScreen()),
-  //       (route) => false,
-  //     );
-  //   }
-  // }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -221,7 +51,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         centerTitle: true,
         elevation: 3,
         backgroundColor: kPrimaryBlue,
-        // Eliminado botón derecho de salir, acciones vacías
         actions: [],
         bottom: TabBar(
           controller: _tabController,
@@ -246,6 +75,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 }
+
+// ===== Usuarios Tab =====
 
 class UsuariosTab extends StatelessWidget {
   const UsuariosTab({Key? key}) : super(key: key);
@@ -287,7 +118,7 @@ class UsuariosTab extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 0), // Mueve el botón arriba para que no tape la barra inferior si hay
+            padding: const EdgeInsets.only(bottom: 0),
             child: FloatingActionButton.extended(
               icon: const Icon(Icons.person_add, color: Colors.white),
               label: const Text(
@@ -563,6 +394,9 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     );
   }
 }
+
+// ===== Fichajes Tab =====
+
 class FichajesTab extends StatefulWidget {
   const FichajesTab({Key? key}) : super(key: key);
 
@@ -790,7 +624,6 @@ class _FichajesTabState extends State<FichajesTab> {
         );
       }
 
-      // Abrir el PDF automáticamente después de guardarlo
       final resultado = await OpenFile.open(rutaGuardado);
       if (resultado.type != ResultType.done && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -899,7 +732,6 @@ class _FichajesTabState extends State<FichajesTab> {
                       itemCount: sesiones.length,
                       itemBuilder: (context, index) {
                         final sesion = sesiones[index];
-
                         final esSoloIncidencia = sesion.entrada == null && sesion.salida == null;
 
                         Empleado? empleado;
@@ -1059,6 +891,8 @@ class IncidenciaEnSesion {
   IncidenciaEnSesion(this.incidencia, this.contexto);
 }
 
+// ===== Incidencias Tab =====
+
 class IncidenciasTab extends StatelessWidget {
   const IncidenciasTab({Key? key}) : super(key: key);
 
@@ -1099,7 +933,7 @@ class IncidenciasTab extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 0), // Igual que UsuariosTab para evitar tapado
+            padding: const EdgeInsets.only(bottom: 0),
             child: FloatingActionButton.extended(
               icon: const Icon(Icons.add_alert, color: Colors.white),
               label: const Text(
