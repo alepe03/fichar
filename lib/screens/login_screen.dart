@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
-import 'home_screen_admin.dart';  // Cambiado a HomeScreenAdmin
+import 'home_screen_admin.dart';
+import 'home_screen.dart';          // Para empleados
 import 'supervisor_screen.dart';
 import 'vcif_screen.dart';
 import '../providers/admin_provider.dart';
@@ -117,6 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       final rol = empleado.rol?.toLowerCase() ?? '';
+      print('[LOGIN] Rol usuario: $rol');
 
       if (rol == 'admin') {
         Navigator.pushReplacement(
@@ -138,6 +140,16 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => SupervisorScreen(cifEmpresa: empleado.cifEmpresa),
+          ),
+        );
+      } else if (rol == 'empleado') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(
+              usuario: empleado.usuario,
+              cifEmpresa: empleado.cifEmpresa,
+            ),
           ),
         );
       } else {
