@@ -13,7 +13,6 @@ import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../providers/admin_provider.dart';
 
-
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
 class AdminScreen extends StatefulWidget {
@@ -51,7 +50,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         centerTitle: true,
         elevation: 3,
         backgroundColor: kPrimaryBlue,
-        actions: [],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
@@ -77,7 +75,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 }
 
 // ===== Usuarios Tab =====
-
 class UsuariosTab extends StatelessWidget {
   const UsuariosTab({Key? key}) : super(key: key);
 
@@ -396,7 +393,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
 }
 
 // ===== Fichajes Tab =====
-
 class FichajesTab extends StatefulWidget {
   const FichajesTab({Key? key}) : super(key: key);
 
@@ -652,8 +648,14 @@ class _FichajesTabState extends State<FichajesTab> {
         final registrosFiltrados = _filtrarRegistros(provider.historicos);
         final sesiones = _agruparSesiones(registrosFiltrados);
 
+        // Mapa para buscar empleado por usuario
         final Map<String, Empleado> mapaEmpleados = {
           for (var e in provider.empleados) e.usuario: e
+        };
+
+        // Mapa para buscar incidencia por código y acceder a "computa"
+        final Map<String, Incidencia> mapaIncidencias = {
+          for (var i in provider.incidencias) i.codigo: i
         };
 
         return Column(
@@ -761,24 +763,29 @@ class _FichajesTabState extends State<FichajesTab> {
                                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                   ),
                                   const SizedBox(height: 8),
-                                  ...sesion.incidencias.map((inc) => Padding(
-                                        padding: const EdgeInsets.only(top: 6),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                                '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                                ' — ${inc.contexto}',
-                                                style: const TextStyle(color: Colors.orange),
-                                              ),
+                                  ...sesion.incidencias.map((inc) {
+                                    final incidenciaCompleta = mapaIncidencias[inc.incidencia.incidenciaCodigo ?? ''];
+                                    final computaTexto = incidenciaCompleta?.computa == true ? 'Computa horas' : 'No computa';
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                              '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                              ' — ${inc.contexto}'
+                                              ' — $computaTexto',
+                                              style: const TextStyle(color: Colors.orange),
                                             ),
-                                          ],
-                                        ),
-                                      )),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
                                 ],
                               ),
                             ),
@@ -835,24 +842,29 @@ class _FichajesTabState extends State<FichajesTab> {
                                   Text('Coordenadas entrada: $entradaCoords'),
                                   Text('Coordenadas salida: $salidaCoords'),
                                   if (sesion.incidencias.isNotEmpty)
-                                    ...sesion.incidencias.map((inc) => Padding(
-                                          padding: const EdgeInsets.only(top: 6),
-                                          child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                              const SizedBox(width: 6),
-                                              Expanded(
-                                                child: Text(
-                                                  'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                                  '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                                  ' — ${inc.contexto}',
-                                                  style: const TextStyle(color: Colors.orange),
-                                                ),
+                                    ...sesion.incidencias.map((inc) {
+                                      final incidenciaCompleta = mapaIncidencias[inc.incidencia.incidenciaCodigo ?? ''];
+                                      final computaTexto = incidenciaCompleta?.computa == true ? 'Computa horas' : 'No computa';
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                                '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                                ' — ${inc.contexto}'
+                                                ' — $computaTexto',
+                                                style: const TextStyle(color: Colors.orange),
                                               ),
-                                            ],
-                                          ),
-                                        )),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
                                   if (tiempoTrabajado.isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 6),
@@ -911,12 +923,19 @@ class IncidenciasTab extends StatelessWidget {
               if (incidencia == null) {
                 error = await provider.addIncidencia(nueva);
               } else {
-                error = await provider.updateIncidencia(nueva);
+                // Aquí comprobamos si ha cambiado algo antes de actualizar:
+                if (nueva.codigo == incidencia.codigo &&
+                    nueva.descripcion == incidencia.descripcion &&
+                    nueva.computa == incidencia.computa) {
+                  error = 'No se detectaron cambios para actualizar.';
+                } else {
+                  error = await provider.updateIncidencia(nueva);
+                }
               }
               if (context.mounted) Navigator.pop(context);
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Error al guardar'), backgroundColor: Colors.redAccent),
+                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
                 );
               }
             },
@@ -963,7 +982,8 @@ class IncidenciasTab extends StatelessWidget {
                       elevation: 3,
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        title: Text('${inc.codigo} - ${inc.descripcion ?? ''}',
+                        title: Text('${inc.codigo} - ${inc.descripcion ?? ''}'
+                            ' — ${inc.computa ? "Computa horas" : "No computa"}',
                             style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
@@ -1020,12 +1040,15 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
   late TextEditingController _codigoCtrl;
   late TextEditingController _descripcionCtrl;
 
+  bool _computaHoras = true;
+
   @override
   void initState() {
     super.initState();
     final inc = widget.incidenciaExistente;
     _codigoCtrl = TextEditingController(text: inc?.codigo ?? '');
     _descripcionCtrl = TextEditingController(text: inc?.descripcion ?? '');
+    _computaHoras = inc?.computa ?? true;
   }
 
   @override
@@ -1063,6 +1086,17 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
               ),
               validator: (v) => v == null || v.isEmpty ? 'Descripción obligatoria' : null,
             ),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              title: const Text('¿Computa horas?'),
+              value: _computaHoras,
+              onChanged: (bool? value) {
+                setState(() {
+                  _computaHoras = value ?? true;
+                });
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -1075,6 +1109,7 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
                         codigo: _codigoCtrl.text.trim(),
                         descripcion: _descripcionCtrl.text.trim(),
                         cifEmpresa: widget.cifEmpresa,
+                        computa: _computaHoras,
                       ),
                     );
                   }

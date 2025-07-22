@@ -56,6 +56,10 @@ class _FicharScreenState extends State<FicharScreen> {
   bool entradaHabilitada = true;
   bool salidaHabilitada = true;
 
+  // Flags para evitar taps repetidos en botones principales
+  bool _entradaEnProceso = false;
+  bool _salidaEnProceso = false;
+
   late String cifEmpresa;
   late String token;
   late String usuario;
@@ -151,7 +155,6 @@ class _FicharScreenState extends State<FicharScreen> {
       _horaEntrada = horaEntrada;
     }
 
-    // Solo borramos hora_entrada si es Salida o incidencia que NO sea "IncidenciaSolo"
     if (tipo == 'Salida' || (tipo.startsWith('Incidencia') && tipo != 'IncidenciaSolo')) {
       await prefs.remove('hora_entrada');
       _horaEntrada = null;
@@ -227,11 +230,33 @@ class _FicharScreenState extends State<FicharScreen> {
     } else if (tipo != 'IncidenciaSolo') {
       await _setUltimaAccion(tipoParaGuardar);
     }
-    // NO actualizamos ni cerramos fichaje si es IncidenciaSolo
   }
 
-  void _onEntrada() => _registrarFichaje('Entrada');
-  void _onSalida() => _registrarFichaje('Salida');
+  // Funciones con bloqueo para evitar taps múltiples
+
+  void _onEntrada() {
+    if (_entradaEnProceso) return;
+    setState(() {
+      _entradaEnProceso = true;
+    });
+    _registrarFichaje('Entrada').then((_) {
+      setState(() {
+        _entradaEnProceso = false;
+      });
+    });
+  }
+
+  void _onSalida() {
+    if (_salidaEnProceso) return;
+    setState(() {
+      _salidaEnProceso = true;
+    });
+    _registrarFichaje('Salida').then((_) {
+      setState(() {
+        _salidaEnProceso = false;
+      });
+    });
+  }
 
   Future<void> _cargarIncidencias() async {
     setState(() {
@@ -260,6 +285,8 @@ class _FicharScreenState extends State<FicharScreen> {
     txtObservaciones.clear();
     Incidencia? seleccionada;
     bool confirmado = false;
+
+    bool _procesandoIncidencia = false;
 
     showDialog(
       context: context,
@@ -332,15 +359,23 @@ class _FicharScreenState extends State<FicharScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
                             ),
                             child: const Text('Registrar solo incidencia'),
-                            onPressed: (seleccionada != null && confirmado)
-                                ? () {
-                                    Navigator.pop(ctx);
-                                    _registrarFichaje(
-                                      'IncidenciaSolo',
-                                      incidenciaCodigo: seleccionada!.codigo,
-                                      observaciones: txtObservaciones.text.trim(),
-                                      esIncidencia: true,
-                                    );
+                            onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
+                                ? () async {
+                                    setStateDialog(() => _procesandoIncidencia = true);
+                                    try {
+                                      await _registrarFichaje(
+                                        'IncidenciaSolo',
+                                        incidenciaCodigo: seleccionada!.codigo,
+                                        observaciones: txtObservaciones.text.trim(),
+                                        esIncidencia: true,
+                                      );
+                                      Navigator.pop(ctx);
+                                    } catch (e) {
+                                      setStateDialog(() => _procesandoIncidencia = false);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error al registrar incidencia: $e')),
+                                      );
+                                    }
                                   }
                                 : null,
                           ),
@@ -351,16 +386,24 @@ class _FicharScreenState extends State<FicharScreen> {
                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
                               ),
                               child: const Text('Registrar y salir'),
-                              onPressed: (seleccionada != null && confirmado)
+                              onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
                                   ? () async {
-                                      Navigator.pop(ctx);
-                                      await _registrarFichaje(
-                                        'Incidencia',
-                                        incidenciaCodigo: seleccionada!.codigo,
-                                        observaciones: txtObservaciones.text.trim(),
-                                        esIncidencia: true,
-                                      );
-                                      await _registrarFichaje('Salida');
+                                      setStateDialog(() => _procesandoIncidencia = true);
+                                      try {
+                                        await _registrarFichaje(
+                                          'Incidencia',
+                                          incidenciaCodigo: seleccionada!.codigo,
+                                          observaciones: txtObservaciones.text.trim(),
+                                          esIncidencia: true,
+                                        );
+                                        await _registrarFichaje('Salida');
+                                        Navigator.pop(ctx);
+                                      } catch (e) {
+                                        setStateDialog(() => _procesandoIncidencia = false);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error al registrar incidencia o salida: $e')),
+                                        );
+                                      }
                                     }
                                   : null,
                             ),
@@ -371,16 +414,24 @@ class _FicharScreenState extends State<FicharScreen> {
                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
                               ),
                               child: const Text('Registrar y entrar'),
-                              onPressed: (seleccionada != null && confirmado)
+                              onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
                                   ? () async {
-                                      Navigator.pop(ctx);
-                                      await _registrarFichaje(
-                                        'Incidencia',
-                                        incidenciaCodigo: seleccionada!.codigo,
-                                        observaciones: txtObservaciones.text.trim(),
-                                        esIncidencia: true,
-                                      );
-                                      await _registrarFichaje('Entrada');
+                                      setStateDialog(() => _procesandoIncidencia = true);
+                                      try {
+                                        await _registrarFichaje(
+                                          'Incidencia',
+                                          incidenciaCodigo: seleccionada!.codigo,
+                                          observaciones: txtObservaciones.text.trim(),
+                                          esIncidencia: true,
+                                        );
+                                        await _registrarFichaje('Entrada');
+                                        Navigator.pop(ctx);
+                                      } catch (e) {
+                                        setStateDialog(() => _procesandoIncidencia = false);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error al registrar incidencia o entrada: $e')),
+                                        );
+                                      }
                                     }
                                   : null,
                             ),
@@ -465,7 +516,7 @@ class _FicharScreenState extends State<FicharScreen> {
                   icon: const Icon(Icons.login),
                   label: const Text('Fichar entrada'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: entradaHabilitada ? _onEntrada : null,
+                  onPressed: (entradaHabilitada && !_entradaEnProceso) ? _onEntrada : null,
                 ),
               ),
               const SizedBox(height: 18),
@@ -476,7 +527,7 @@ class _FicharScreenState extends State<FicharScreen> {
                   icon: const Icon(Icons.logout),
                   label: const Text('Fichar salida'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: salidaHabilitada ? _onSalida : null,
+                  onPressed: (salidaHabilitada && !_salidaEnProceso) ? _onSalida : null,
                 ),
               ),
               const SizedBox(height: 18),

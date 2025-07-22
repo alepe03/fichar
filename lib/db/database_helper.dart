@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 2,  // Incrementamos versión a 2 para migraciones
+      version: 3,  // Actualizado a versión 3 para migraciones nuevas
       onCreate: _createDB, // Llama a la función para crear las tablas
       onUpgrade: _onUpgrade, // Para migraciones de esquema
     );
@@ -80,13 +80,14 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de incidencias: limpia, como TEXT PRIMARY KEY
+    // Tabla de incidencias con columna computa
     await db.execute('DROP TABLE IF EXISTS incidencias;');
     await db.execute('''
       CREATE TABLE incidencias (
         codigo TEXT PRIMARY KEY,
         descripcion TEXT,
-        cif_empresa TEXT
+        cif_empresa TEXT,
+        computa INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -126,6 +127,14 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE historico ADD COLUMN longitud REAL');
       } catch (e) {
         print('[DEBUG][DatabaseHelper] La columna longitud ya existe o error: $e');
+      }
+    }
+    if (oldVersion < 3) {
+      print('[DEBUG][DatabaseHelper] Migrando DB a versión 3: añadiendo columna computa en incidencias');
+      try {
+        await db.execute('ALTER TABLE incidencias ADD COLUMN computa INTEGER NOT NULL DEFAULT 1');
+      } catch (e) {
+        print('[DEBUG][DatabaseHelper] La columna computa ya existe o error: $e');
       }
     }
   }

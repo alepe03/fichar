@@ -76,6 +76,7 @@ class IncidenciaService {
       'codigo': incidencia.codigo,
       'descripcion': incidencia.descripcion ?? '',
       'cif_empresa': incidencia.cifEmpresa ?? '',
+      'computa': incidencia.computa ? '1' : '0',  // Añadido
     };
 
     final response = await http.post(
@@ -110,6 +111,7 @@ class IncidenciaService {
       'codigo': incidencia.codigo,
       'descripcion': incidencia.descripcion ?? '',
       'cif_empresa': incidencia.cifEmpresa ?? '',
+      'computa': incidencia.computa ? '1' : '0',  // Añadido
     };
 
     final response = await http.post(
