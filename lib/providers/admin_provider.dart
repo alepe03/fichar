@@ -7,6 +7,7 @@ import '../models/incidencia.dart';
 import '../db/database_helper.dart';
 import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
+import '../services/historico_service.dart';  // Importar el servicio
 
 class AdminProvider extends ChangeNotifier {
   List<Empleado> empleados = [];
@@ -17,6 +18,7 @@ class AdminProvider extends ChangeNotifier {
 
   AdminProvider(this.cifEmpresa);
 
+  /// Carga empleados de la base local
   Future<void> cargarEmpleados() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -24,6 +26,7 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Carga históricos de la base local
   Future<void> cargarHistoricos() async {
     final db = await DatabaseHelper.instance.database;
     final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
@@ -31,11 +34,44 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Carga incidencias de la base local
   Future<void> cargarIncidencias() async {
     incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
     notifyListeners();
   }
 
+  /// Sincroniza el histórico completo desde el servidor y actualiza local
+  Future<void> sincronizarHistoricoCompleto() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    final baseUrl = prefs.getString('baseUrl') ?? ''; // Asumo guardas la url base en prefs
+    final nombreBD = cifEmpresa; // Usas cifEmpresa como base de datos o parámetro
+
+    if (token.isEmpty || baseUrl.isEmpty) {
+      print('[AdminProvider.sincronizarHistoricoCompleto] Token o baseUrl no configurados');
+      return;
+    }
+
+    try {
+      print('[AdminProvider.sincronizarHistoricoCompleto] Iniciando sincronización...');
+      await HistoricoService.sincronizarHistoricoCompleto(token, baseUrl, nombreBD);
+      await cargarHistoricos();
+      print('[AdminProvider.sincronizarHistoricoCompleto] Sincronización completada');
+    } catch (e) {
+      print('[AdminProvider.sincronizarHistoricoCompleto] Error sincronizando histórico: $e');
+    }
+  }
+
+  /// Llama a la sincronización y carga los datos iniciales
+  Future<void> cargarDatosIniciales() async {
+    print('[AdminProvider] Inicio cargarDatosIniciales');
+    await sincronizarHistoricoCompleto();
+    await cargarEmpleados();
+    await cargarIncidencias();
+    print('[AdminProvider] Fin cargarDatosIniciales');
+  }
+
+  // Métodos para manejar empleados e incidencias (add/update/delete) sin cambios
   Future<String?> addEmpleado(Empleado empleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -55,21 +91,14 @@ class AdminProvider extends ChangeNotifier {
     final token = prefs.getString('token') ?? '';
 
     try {
-      print('[updateEmpleado] Token: $token');
-      print('[updateEmpleado] Usuario original: $usuarioOriginal');
-      print('[updateEmpleado] Empleado a actualizar: ${empleado.toMap()}');
-
       final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
         empleado: empleado,
         usuarioOriginal: usuarioOriginal,
         token: token,
       );
 
-      print('[updateEmpleado] Respuesta API: $respuesta');
-
       if (!respuesta.startsWith('OK')) {
-        print('[updateEmpleado] Error recibido desde API: $respuesta');
-        return respuesta; // Devuelve mensaje de error recibido del servidor
+        return respuesta;
       }
 
       final db = await DatabaseHelper.instance.database;
@@ -80,7 +109,6 @@ class AdminProvider extends ChangeNotifier {
         whereArgs: [usuarioOriginal, empleado.cifEmpresa],
       );
 
-      print('[updateEmpleado] Registros encontrados localmente: ${registros.length}');
       if (registros.isEmpty) {
         return 'No existe registro con usuario $usuarioOriginal y empresa ${empleado.cifEmpresa}';
       }
@@ -92,17 +120,13 @@ class AdminProvider extends ChangeNotifier {
         whereArgs: [usuarioOriginal, empleado.cifEmpresa],
       );
 
-      print('[updateEmpleado] Filas afectadas localmente: $count');
-
       if (count == 0) {
         return 'No se encontró el registro o no hubo cambios';
       }
 
       await cargarEmpleados();
       return null;
-    } catch (e, stacktrace) {
-      print('[updateEmpleado] Error capturado: $e');
-      print(stacktrace);
+    } catch (e) {
       return 'Error actualizando empleado: $e';
     }
   }

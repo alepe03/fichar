@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
+import '../config.dart'; // <-- Importa la configuración global
 import '../services/auth_service.dart';
 import 'home_screen_admin.dart';
 import 'home_screen.dart';          // Para empleados
@@ -98,6 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (empleado != null) {
+      // Guardar usuario y contraseña si se seleccionó recordar usuario
       if (vaRecordarUsuario) {
         await prefs.setString('usuario_recordado', txtVLoginUsuario.text.trim());
         await prefs.setString('password_recordado', txtVLoginPassword.text);
@@ -106,16 +108,20 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove('password_recordado');
       }
 
+      // Guardar datos clave en SharedPreferences
       await prefs.setString('cif_empresa', cifSeleccionado!);
-
       await prefs.setString('usuario', empleado.usuario);
       await prefs.setString('nombre_empleado', empleado.nombre ?? '');
       await prefs.setString('dni_empleado', empleado.dni ?? '');
       await prefs.setString('id_sucursal', '');
-      await prefs.setString('token', '123456.abcd');
-      print('[LOGIN] Token global guardado: 123456.abcd');
 
-      // Guarda el permiso de localización también para usarlo luego
+      // Guardar token y URL base desde config.dart
+      await prefs.setString('token', '123456.abcd'); // Cambia este token por el real
+      await prefs.setString('baseUrl', BASE_URL);
+
+      print('[LOGIN] Token global guardado: 123456.abcd');
+      print('[LOGIN] URL base guardada: $BASE_URL');
+
       await prefs.setInt('puede_localizar', empleado.puedeLocalizar);
 
       if (!mounted) return;
@@ -124,13 +130,14 @@ class _LoginScreenState extends State<LoginScreen> {
       print('[LOGIN] Rol usuario: $rol');
 
       if (rol == 'admin') {
+        final adminProvider = AdminProvider(empleado.cifEmpresa);
+        await adminProvider.cargarDatosIniciales();
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => MultiProvider(
-              providers: [
-                ChangeNotifierProvider(create: (_) => AdminProvider(empleado.cifEmpresa)),
-              ],
+            builder: (_) => ChangeNotifierProvider.value(
+              value: adminProvider,
               child: HomeScreenAdmin(
                 usuario: empleado.usuario,
                 cifEmpresa: empleado.cifEmpresa,
@@ -146,12 +153,18 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       } else if (rol == 'empleado') {
+        final adminProvider = AdminProvider(empleado.cifEmpresa);
+        await adminProvider.cargarDatosIniciales();
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => HomeScreen(
-              usuario: empleado.usuario,
-              cifEmpresa: empleado.cifEmpresa,
+            builder: (_) => ChangeNotifierProvider.value(
+              value: adminProvider,
+              child: HomeScreen(
+                usuario: empleado.usuario,
+                cifEmpresa: empleado.cifEmpresa,
+              ),
             ),
           ),
         );
@@ -223,7 +236,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 24),
-
                   if (listaCifs.isEmpty)
                     const Text(
                       'No hay CIFs disponibles. Ve a la pantalla anterior para añadirlos.',
@@ -254,9 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
-
                   const SizedBox(height: 20),
-
                   TextFormField(
                     controller: txtVLoginUsuario,
                     decoration: const InputDecoration(

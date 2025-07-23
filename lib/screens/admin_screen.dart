@@ -30,11 +30,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = Provider.of<AdminProvider>(context, listen: false);
-      provider.cargarEmpleados();
-      provider.cargarHistoricos();
-      provider.cargarIncidencias();
+      print('[AdminScreen] Iniciando sincronización completa...');
+      await provider.sincronizarHistoricoCompleto();
+      print('[AdminScreen] Sincronización completa finalizada.');
+      await provider.cargarEmpleados();
+      await provider.cargarHistoricos();
+      print('[AdminScreen] Históricos cargados: ${provider.historicos.length}');
+      await provider.cargarIncidencias();
     });
   }
 

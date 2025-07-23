@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../config.dart'; 
-import '../models/historico.dart'; 
-import '../models/incidencia.dart'; 
-import '../services/historico_service.dart'; 
-import '../services/incidencia_service.dart'; 
+import '../config.dart';
+import '../models/historico.dart';
+import '../models/incidencia.dart';
+import '../services/historico_service.dart';
+import '../services/incidencia_service.dart';
 
 String nowToMySQL() {
   final now = DateTime.now();
@@ -87,46 +87,28 @@ class _FicharScreenState extends State<FicharScreen> {
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final nuevaCifEmpresa     = prefs.getString('cif_empresa')     ?? '';
-    final nuevoToken          = prefs.getString('token')           ?? '';
-    final nuevoUsuario        = prefs.getString('usuario')         ?? '';
-    final nuevoNombreEmpleado = prefs.getString('nombre_empleado') ?? '';
-    final nuevoDniEmpleado    = prefs.getString('dni_empleado')    ?? '';
-    final nuevoIdSucursal     = prefs.getString('id_sucursal')     ?? '';
-    final nuevaUltimaAccion   = prefs.getString('ultimo_tipo_fichaje') ?? '';
-    final horaEntradaStr      = prefs.getString('hora_entrada');
-  final puedeLocalizarInt = prefs.getInt('puede_localizar') ?? 0;
-    final puedeLocalizarStr = puedeLocalizarInt.toString();
+    cifEmpresa = prefs.getString('cif_empresa') ?? '';
+    token = prefs.getString('token') ?? '';
+    usuario = prefs.getString('usuario') ?? '';
+    nombreEmpleado = prefs.getString('nombre_empleado') ?? '';
+    dniEmpleado = prefs.getString('dni_empleado') ?? '';
+    idSucursal = prefs.getString('id_sucursal') ?? '';
+    vaUltimaAccion = prefs.getString('ultimo_tipo_fichaje') ?? '';
+    final horaEntradaStr = prefs.getString('hora_entrada');
+    puedeLocalizar = prefs.getInt('puede_localizar') ?? 0;
 
-
-    DateTime? nuevaHoraEntrada;
     if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
-      nuevaHoraEntrada = DateTime.tryParse(horaEntradaStr);
+      _horaEntrada = DateTime.tryParse(horaEntradaStr);
     }
-
-    setState(() {
-      cifEmpresa = nuevaCifEmpresa;
-      token = nuevoToken;
-      usuario = nuevoUsuario;
-      nombreEmpleado = nuevoNombreEmpleado;
-      dniEmpleado = nuevoDniEmpleado;
-      idSucursal = nuevoIdSucursal;
-      vaUltimaAccion = nuevaUltimaAccion;
-      _horaEntrada = nuevaHoraEntrada;
-      puedeLocalizar = int.tryParse(puedeLocalizarStr) ?? 0;
-    });
 
     _calcularEstadoBotones();
     _initTemporizador();
   }
 
   void _calcularEstadoBotones() {
-    final nuevaEntradaHabilitada = vaUltimaAccion != 'Entrada';
-    final nuevaSalidaHabilitada = vaUltimaAccion == 'Entrada';
-    setState(() {
-      entradaHabilitada = nuevaEntradaHabilitada;
-      salidaHabilitada = nuevaSalidaHabilitada;
-    });
+    entradaHabilitada = vaUltimaAccion != 'Entrada';
+    salidaHabilitada = vaUltimaAccion == 'Entrada';
+    setState(() {});
   }
 
   void _initTemporizador() {
@@ -166,9 +148,10 @@ class _FicharScreenState extends State<FicharScreen> {
       _horaEntrada = null;
     }
 
-    setState(() => vaUltimaAccion = tipo);
+    vaUltimaAccion = tipo;
     _calcularEstadoBotones();
     _initTemporizador();
+    setState(() {});
   }
 
   Future<void> _registrarFichaje(
@@ -518,7 +501,6 @@ class _FicharScreenState extends State<FicharScreen> {
               const SizedBox(height: 15),
               _temporizadorWidget(),
               const SizedBox(height: 20),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -529,7 +511,6 @@ class _FicharScreenState extends State<FicharScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -540,7 +521,6 @@ class _FicharScreenState extends State<FicharScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -555,9 +535,7 @@ class _FicharScreenState extends State<FicharScreen> {
                   onPressed: _onIncidencia,
                 ),
               ),
-
               const SizedBox(height: 30),
-
               if (vaUltimaAccion.isNotEmpty)
                 Text(
                   'Última acción: $vaUltimaAccion',

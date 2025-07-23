@@ -1,7 +1,7 @@
-import 'package:sqflite/sqflite.dart';        
-import 'package:path/path.dart';                
-import '../models/historico.dart';              
-import '../models/incidencia.dart';            
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import '../models/historico.dart';
+import '../models/incidencia.dart';
 
 // Clase singleton para manejar la base de datos local SQLite
 class DatabaseHelper {
@@ -169,7 +169,7 @@ class DatabaseHelper {
     );
   }
 
-  // -- Históricos pendientes --
+  // -- Históricos pendientes (sincronizados = 0) --
   Future<List<Historico>> historicosPendientes() async {
     final db = await database;
     final maps = await db.query('historico', where: 'sincronizado = 0');
@@ -185,5 +185,11 @@ class DatabaseHelper {
       whereArgs: [cifEmpresa],
     );
     return maps.map((m) => Incidencia.fromMap(m)).toList();
+  }
+
+  // -- Borrar todos los historicos de una empresa --
+  Future<int> borrarHistoricosPorEmpresa(String cifEmpresa) async {
+    final db = await database;
+    return await db.delete('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
   }
 }
