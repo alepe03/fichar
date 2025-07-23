@@ -83,6 +83,7 @@ class EmpleadoService {
         'dni': empleado.dni ?? '',
         'rol': empleado.rol ?? '',
         'password_hash': empleado.passwordHash ?? '',
+        'puede_localizar': empleado.puedeLocalizar.toString(),
       },
     );
     if (response.statusCode == 200) {
@@ -116,6 +117,7 @@ class EmpleadoService {
         'dni': empleado.dni ?? '',
         'rol': empleado.rol ?? '',
         'password_hash': empleado.passwordHash ?? '',
+        'puede_localizar': empleado.puedeLocalizar.toString(),
       },
     );
     if (response.statusCode == 200) {

@@ -115,6 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('token', '123456.abcd');
       print('[LOGIN] Token global guardado: 123456.abcd');
 
+      // Guarda el permiso de localización también para usarlo luego
+      await prefs.setInt('puede_localizar', empleado.puedeLocalizar);
+
       if (!mounted) return;
 
       final rol = empleado.rol?.toLowerCase() ?? '';

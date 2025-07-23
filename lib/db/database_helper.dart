@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 3,  // Actualizado a versión 3 para migraciones nuevas
+      version: 4,  // Actualizado a versión 4 para migraciones nuevas
       onCreate: _createDB, // Llama a la función para crear las tablas
       onUpgrade: _onUpgrade, // Para migraciones de esquema
     );
@@ -37,7 +37,7 @@ class DatabaseHelper {
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
 
-    // Tabla de empleados
+    // Tabla de empleados con nueva columna puede_localizar
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
         usuario TEXT NOT NULL,
@@ -51,6 +51,7 @@ class DatabaseHelper {
         dni TEXT,
         rol TEXT,
         password_hash TEXT,
+        puede_localizar INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (usuario, cif_empresa)
       )
     ''');
@@ -135,6 +136,14 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE incidencias ADD COLUMN computa INTEGER NOT NULL DEFAULT 1');
       } catch (e) {
         print('[DEBUG][DatabaseHelper] La columna computa ya existe o error: $e');
+      }
+    }
+    if (oldVersion < 4) {
+      print('[DEBUG][DatabaseHelper] Migrando DB a versión 4: añadiendo columna puede_localizar en empleados');
+      try {
+        await db.execute('ALTER TABLE empleados ADD COLUMN puede_localizar INTEGER NOT NULL DEFAULT 0');
+      } catch (e) {
+        print('[DEBUG][DatabaseHelper] La columna puede_localizar ya existe o error: $e');
       }
     }
   }

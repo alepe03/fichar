@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
@@ -56,7 +57,6 @@ class _FicharScreenState extends State<FicharScreen> {
   bool entradaHabilitada = true;
   bool salidaHabilitada = true;
 
-  // Flags para evitar taps repetidos en botones principales
   bool _entradaEnProceso = false;
   bool _salidaEnProceso = false;
 
@@ -67,6 +67,8 @@ class _FicharScreenState extends State<FicharScreen> {
   late String dniEmpleado;
   late String idSucursal;
   String vaUltimaAccion = '';
+
+  int puedeLocalizar = 0; // Control permiso para localizar (0=no,1=sí)
 
   final ValueNotifier<Duration> _tiempoTrabajadoNotifier = ValueNotifier(Duration.zero);
   DateTime? _horaEntrada;
@@ -92,7 +94,10 @@ class _FicharScreenState extends State<FicharScreen> {
     final nuevoDniEmpleado    = prefs.getString('dni_empleado')    ?? '';
     final nuevoIdSucursal     = prefs.getString('id_sucursal')     ?? '';
     final nuevaUltimaAccion   = prefs.getString('ultimo_tipo_fichaje') ?? '';
-    final horaEntradaStr = prefs.getString('hora_entrada');
+    final horaEntradaStr      = prefs.getString('hora_entrada');
+  final puedeLocalizarInt = prefs.getInt('puede_localizar') ?? 0;
+    final puedeLocalizarStr = puedeLocalizarInt.toString();
+
 
     DateTime? nuevaHoraEntrada;
     if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
@@ -108,6 +113,7 @@ class _FicharScreenState extends State<FicharScreen> {
       idSucursal = nuevoIdSucursal;
       vaUltimaAccion = nuevaUltimaAccion;
       _horaEntrada = nuevaHoraEntrada;
+      puedeLocalizar = int.tryParse(puedeLocalizarStr) ?? 0;
     });
 
     _calcularEstadoBotones();
@@ -189,7 +195,12 @@ class _FicharScreenState extends State<FicharScreen> {
       }
     }
 
-    Position? pos = await obtenerPosicion();
+    Position? pos;
+    if (puedeLocalizar == 1) {
+      pos = await obtenerPosicion();
+    } else {
+      pos = null; // No se recoge localización si no tiene permiso
+    }
 
     final historico = Historico(
       id: 0,
@@ -231,8 +242,6 @@ class _FicharScreenState extends State<FicharScreen> {
       await _setUltimaAccion(tipoParaGuardar);
     }
   }
-
-  // Funciones con bloqueo para evitar taps múltiples
 
   void _onEntrada() {
     if (_entradaEnProceso) return;

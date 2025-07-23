@@ -1,4 +1,3 @@
-// Modelo de datos para un empleado
 class Empleado {
   final String usuario;         // Nombre de usuario
   final String cifEmpresa;      // CIF de la empresa a la que pertenece
@@ -11,6 +10,7 @@ class Empleado {
   final String? dni;            // DNI/NIF (opcional)
   final String? rol;            // Rol del empleado (opcional)
   final String? passwordHash;   // Hash de la contraseña (opcional)
+  final int puedeLocalizar;     // Nuevo campo para control de localización (0=no, 1=sí)
 
   // Constructor
   Empleado({
@@ -25,6 +25,7 @@ class Empleado {
     this.dni,
     this.rol,
     this.passwordHash,
+    this.puedeLocalizar = 0,    // Por defecto no puede localizar
   });
 
   // Crea un empleado a partir de una línea CSV (separada por ;)
@@ -42,6 +43,9 @@ class Empleado {
       dni: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
       rol: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
       passwordHash: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
+      puedeLocalizar: parts.length > 11 && parts[11].isNotEmpty
+          ? int.tryParse(parts[11]) ?? 0
+          : 0,
     );
   }
 
@@ -59,6 +63,9 @@ class Empleado {
       dni: map['dni']?.toString(),
       rol: map['rol']?.toString(),
       passwordHash: map['password_hash']?.toString(),
+      puedeLocalizar: map['puede_localizar'] != null
+          ? int.tryParse(map['puede_localizar'].toString()) ?? 0
+          : 0,
     );
   }
 
@@ -76,6 +83,7 @@ class Empleado {
       'dni': dni,
       'rol': rol,
       'password_hash': passwordHash,
+      'puede_localizar': puedeLocalizar,
     };
   }
 }

@@ -211,8 +211,10 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   late TextEditingController _telefonoCtrl;
   late TextEditingController _dniCtrl;
   late TextEditingController _passwordHashCtrl;
-  final _roles = ['admin', 'empleado'];
+
+  final _roles = ['admin', 'supervisor', 'empleado'];
   String? _rolSeleccionado;
+  bool _puedeLocalizar = false;
 
   late String _usuarioOriginal;
 
@@ -230,6 +232,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     _dniCtrl = TextEditingController(text: emp?.dni ?? '');
     _passwordHashCtrl = TextEditingController(text: emp?.passwordHash ?? '');
     _rolSeleccionado = emp?.rol;
+    _puedeLocalizar = (emp?.puedeLocalizar ?? 0) == 1;
 
     _usuarioOriginal = emp?.usuario ?? '';
   }
@@ -238,6 +241,9 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   Widget build(BuildContext context) {
     final isEditing = widget.empleadoExistente != null;
     final theme = Theme.of(context);
+
+    final bool puedeCambiarLocalizacion = _rolSeleccionado != 'supervisor';
+
     return SingleChildScrollView(
       child: Form(
         key: _formKey,
@@ -257,7 +263,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 prefixIcon: Icon(Icons.person, color: kPrimaryBlue),
               ),
               validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
-              enabled: true,
+              enabled: !isEditing,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -339,24 +345,38 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                   .map(
                     (r) => DropdownMenuItem(
                       value: r,
-                      child: Text(r == 'admin' ? 'Administrador' : 'Empleado'),
+                      child: Text(
+                        r == 'admin'
+                            ? 'Administrador'
+                            : r == 'supervisor'
+                                ? 'Supervisor'
+                                : 'Empleado',
+                      ),
                     ),
                   )
                   .toList(),
-              onChanged: (v) => setState(() => _rolSeleccionado = v),
+              onChanged: (v) => setState(() {
+                _rolSeleccionado = v;
+                if (v == 'supervisor') {
+                  _puedeLocalizar = false;
+                }
+              }),
               validator: (v) => v == null ? 'Selecciona un rol' : null,
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _passwordHashCtrl,
-              decoration: InputDecoration(
-                labelText: 'Hash Password',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock, color: kPrimaryBlue),
-              ),
-              obscureText: true,
-              validator: (v) => v == null || v.isEmpty ? 'Contraseña obligatoria' : null,
+
+            SwitchListTile(
+              title: const Text('Permitir localización'),
+              value: _puedeLocalizar,
+              onChanged: puedeCambiarLocalizacion
+                  ? (value) {
+                      setState(() {
+                        _puedeLocalizar = value;
+                      });
+                    }
+                  : null,
             ),
+
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -377,6 +397,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                         dni: _dniCtrl.text.trim(),
                         rol: _rolSeleccionado,
                         passwordHash: _passwordHashCtrl.text.trim(),
+                        puedeLocalizar: _puedeLocalizar ? 1 : 0,
                       ),
                       _usuarioOriginal,
                     );
@@ -393,6 +414,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
 }
 
 // ===== Fichajes Tab =====
+
 class FichajesTab extends StatefulWidget {
   const FichajesTab({Key? key}) : super(key: key);
 
@@ -648,12 +670,10 @@ class _FichajesTabState extends State<FichajesTab> {
         final registrosFiltrados = _filtrarRegistros(provider.historicos);
         final sesiones = _agruparSesiones(registrosFiltrados);
 
-        // Mapa para buscar empleado por usuario
         final Map<String, Empleado> mapaEmpleados = {
           for (var e in provider.empleados) e.usuario: e
         };
 
-        // Mapa para buscar incidencia por código y acceder a "computa"
         final Map<String, Incidencia> mapaIncidencias = {
           for (var i in provider.incidencias) i.codigo: i
         };
@@ -923,7 +943,6 @@ class IncidenciasTab extends StatelessWidget {
               if (incidencia == null) {
                 error = await provider.addIncidencia(nueva);
               } else {
-                // Aquí comprobamos si ha cambiado algo antes de actualizar:
                 if (nueva.codigo == incidencia.codigo &&
                     nueva.descripcion == incidencia.descripcion &&
                     nueva.computa == incidencia.computa) {

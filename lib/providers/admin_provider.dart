@@ -50,36 +50,62 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
-  final prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('token') ?? '';
+  Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
 
-  try {
-    final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
-      empleado: empleado,
-      usuarioOriginal: usuarioOriginal,
-      token: token,
-    );
+    try {
+      print('[updateEmpleado] Token: $token');
+      print('[updateEmpleado] Usuario original: $usuarioOriginal');
+      print('[updateEmpleado] Empleado a actualizar: ${empleado.toMap()}');
 
-    if (!respuesta.startsWith('OK')) {
-      return respuesta; // Devuelve mensaje de error recibido del servidor
+      final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
+        empleado: empleado,
+        usuarioOriginal: usuarioOriginal,
+        token: token,
+      );
+
+      print('[updateEmpleado] Respuesta API: $respuesta');
+
+      if (!respuesta.startsWith('OK')) {
+        print('[updateEmpleado] Error recibido desde API: $respuesta');
+        return respuesta; // Devuelve mensaje de error recibido del servidor
+      }
+
+      final db = await DatabaseHelper.instance.database;
+
+      final registros = await db.query(
+        'empleados',
+        where: 'usuario = ? AND cif_empresa = ?',
+        whereArgs: [usuarioOriginal, empleado.cifEmpresa],
+      );
+
+      print('[updateEmpleado] Registros encontrados localmente: ${registros.length}');
+      if (registros.isEmpty) {
+        return 'No existe registro con usuario $usuarioOriginal y empresa ${empleado.cifEmpresa}';
+      }
+
+      final count = await db.update(
+        'empleados',
+        empleado.toMap(),
+        where: 'usuario = ? AND cif_empresa = ?',
+        whereArgs: [usuarioOriginal, empleado.cifEmpresa],
+      );
+
+      print('[updateEmpleado] Filas afectadas localmente: $count');
+
+      if (count == 0) {
+        return 'No se encontró el registro o no hubo cambios';
+      }
+
+      await cargarEmpleados();
+      return null;
+    } catch (e, stacktrace) {
+      print('[updateEmpleado] Error capturado: $e');
+      print(stacktrace);
+      return 'Error actualizando empleado: $e';
     }
-
-    // Si OK, actualizamos localmente
-    final db = await DatabaseHelper.instance.database;
-    await db.update(
-      'empleados',
-      empleado.toMap(),
-      where: 'usuario = ? AND cif_empresa = ?',
-      whereArgs: [usuarioOriginal, empleado.cifEmpresa],
-    );
-    await cargarEmpleados();
-    return null;
-  } catch (e) {
-    return 'Error actualizando empleado: $e';
   }
-}
-
 
   Future<String?> deleteEmpleado(String usuario) async {
     final prefs = await SharedPreferences.getInstance();
