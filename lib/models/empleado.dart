@@ -1,18 +1,18 @@
 class Empleado {
-  final String usuario;         // Nombre de usuario
-  final String cifEmpresa;      // CIF de la empresa a la que pertenece
-  final String? direccion;      // Dirección del empleado (opcional)
-  final String? poblacion;      // Población (opcional)
-  final String? codigoPostal;   // Código postal (opcional)
-  final String? telefono;       // Teléfono (opcional)
-  final String? email;          // Email (opcional)
-  final String? nombre;         // Nombre completo (opcional)
-  final String? dni;            // DNI/NIF (opcional)
-  final String? rol;            // Rol del empleado (opcional)
-  final String? passwordHash;   // Hash de la contraseña (opcional)
-  final int puedeLocalizar;     // Nuevo campo para control de localización (0=no, 1=sí)
+  final String usuario;
+  final String cifEmpresa;
+  final String? direccion;
+  final String? poblacion;
+  final String? codigoPostal;
+  final String? telefono;
+  final String? email;
+  final String? nombre;
+  final String? dni;
+  final String? rol;
+  final String? passwordHash;
+  final int puedeLocalizar;
+  final int activo; // 1=activo, 0=de baja
 
-  // Constructor
   Empleado({
     required this.usuario,
     required this.cifEmpresa,
@@ -25,10 +25,10 @@ class Empleado {
     this.dni,
     this.rol,
     this.passwordHash,
-    this.puedeLocalizar = 0,    // Por defecto no puede localizar
+    this.puedeLocalizar = 0,
+    this.activo = 1,
   });
 
-  // Crea un empleado a partir de una línea CSV (separada por ;)
   factory Empleado.fromCsv(String line) {
     final parts = line.split(';');
     return Empleado(
@@ -43,13 +43,11 @@ class Empleado {
       dni: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
       rol: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
       passwordHash: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
-      puedeLocalizar: parts.length > 11 && parts[11].isNotEmpty
-          ? int.tryParse(parts[11]) ?? 0
-          : 0,
+      puedeLocalizar: parts.length > 11 && parts[11].isNotEmpty ? int.tryParse(parts[11]) ?? 0 : 0,
+      activo: parts.length > 12 && parts[12].isNotEmpty ? int.tryParse(parts[12]) ?? 1 : 1,
     );
   }
 
-  // Crea un empleado a partir de un mapa (por ejemplo, desde SQLite/local DB)
   factory Empleado.fromMap(Map<String, Object?> map) {
     return Empleado(
       usuario: map['usuario']?.toString() ?? '',
@@ -63,13 +61,11 @@ class Empleado {
       dni: map['dni']?.toString(),
       rol: map['rol']?.toString(),
       passwordHash: map['password_hash']?.toString(),
-      puedeLocalizar: map['puede_localizar'] != null
-          ? int.tryParse(map['puede_localizar'].toString()) ?? 0
-          : 0,
+      puedeLocalizar: map['puede_localizar'] != null ? int.tryParse(map['puede_localizar'].toString()) ?? 0 : 0,
+      activo: map['activo'] != null ? int.tryParse(map['activo'].toString()) ?? 1 : 1,
     );
   }
 
-  // Convierte el empleado a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
       'usuario': usuario,
@@ -84,6 +80,39 @@ class Empleado {
       'rol': rol,
       'password_hash': passwordHash,
       'puede_localizar': puedeLocalizar,
+      'activo': activo,
     };
+  }
+
+  Empleado copyWith({
+    String? usuario,
+    String? cifEmpresa,
+    String? direccion,
+    String? poblacion,
+    String? codigoPostal,
+    String? telefono,
+    String? email,
+    String? nombre,
+    String? dni,
+    String? rol,
+    String? passwordHash,
+    int? puedeLocalizar,
+    int? activo,
+  }) {
+    return Empleado(
+      usuario: usuario ?? this.usuario,
+      cifEmpresa: cifEmpresa ?? this.cifEmpresa,
+      direccion: direccion ?? this.direccion,
+      poblacion: poblacion ?? this.poblacion,
+      codigoPostal: codigoPostal ?? this.codigoPostal,
+      telefono: telefono ?? this.telefono,
+      email: email ?? this.email,
+      nombre: nombre ?? this.nombre,
+      dni: dni ?? this.dni,
+      rol: rol ?? this.rol,
+      passwordHash: passwordHash ?? this.passwordHash,
+      puedeLocalizar: puedeLocalizar ?? this.puedeLocalizar,
+      activo: activo ?? this.activo,
+    );
   }
 }

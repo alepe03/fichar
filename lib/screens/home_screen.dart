@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 import 'historico_screen.dart';
+import 'about_screen.dart'; // <-- Importa tu nueva pantalla
 
 class HomeScreen extends StatefulWidget {
   final String usuario;
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const FicharScreen(),
       const LoginScreen(),
       HistoricoScreen(usuario: widget.usuario, cifEmpresa: widget.cifEmpresa),
+      const AboutScreen(), // <-- Añadida al final
     ];
   }
 
@@ -53,16 +55,20 @@ class _HomeScreenState extends State<HomeScreen> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.check_box_outlined, size: 28),
+            icon: Icon(Icons.fingerprint_outlined, size: 28),
             label: 'Fichar',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.login, size: 28),
+            icon: Icon(Icons.person_outline, size: 28),
             label: 'Login',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history, size: 28),
+            icon: Icon(Icons.list_alt, size: 28),
             label: 'Histórico',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.info_outline, size: 28),
+            label: 'Acerca',
           ),
         ],
       ),

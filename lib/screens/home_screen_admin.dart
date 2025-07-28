@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 import 'admin_screen.dart';
-import '../providers/admin_provider.dart'; // Ajusta la ruta según tu proyecto
+import 'about_screen.dart';               // <-- Importa tu pantalla Acerca de
+import '../providers/admin_provider.dart';
 
 class HomeScreenAdmin extends StatefulWidget {
   final String usuario;
@@ -34,6 +35,7 @@ class _HomeScreenAdminState extends State<HomeScreenAdmin> {
         create: (_) => AdminProvider(widget.cifEmpresa),
         child: AdminScreen(cifEmpresa: widget.cifEmpresa),
       ),
+      const AboutScreen(),  // <-- Añadida al final
     ];
   }
 
@@ -59,17 +61,21 @@ class _HomeScreenAdminState extends State<HomeScreenAdmin> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.check_box_outlined, size: 28),
+            icon: Icon(Icons.fingerprint_outlined, size: 28),
             label: 'Fichar',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.login, size: 28),
+            icon: Icon(Icons.person_outline, size: 28),
             label: 'Login',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.admin_panel_settings, size: 28),
+            icon: Icon(Icons.manage_accounts, size: 28),
             label: 'Admin',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.info_outline, size: 28),
+            label: 'Acerca',
+          ),  // <-- Nuevo ítem
         ],
       ),
     );

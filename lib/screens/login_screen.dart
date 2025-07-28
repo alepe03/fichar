@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
-import '../config.dart'; // <-- Importa la configuración global
+import '../config.dart';
 import '../services/auth_service.dart';
 import 'home_screen_admin.dart';
-import 'home_screen.dart';          // Para empleados
+import 'home_screen.dart';
 import 'supervisor_screen.dart';
 import 'vcif_screen.dart';
 import '../providers/admin_provider.dart';
@@ -37,11 +37,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadRememberedCredentials() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? usuarioGuardado = prefs.getString('usuario_recordado');
-    String? passwordGuardado = prefs.getString('password_recordado');
-    if ((usuarioGuardado != null && usuarioGuardado.isNotEmpty) ||
-        (passwordGuardado != null && passwordGuardado.isNotEmpty)) {
+    final prefs = await SharedPreferences.getInstance();
+    final usuarioGuardado = prefs.getString('usuario_recordado');
+    final passwordGuardado = prefs.getString('password_recordado');
+    if ((usuarioGuardado?.isNotEmpty ?? false) ||
+        (passwordGuardado?.isNotEmpty ?? false)) {
       setState(() {
         txtVLoginUsuario.text = usuarioGuardado ?? '';
         txtVLoginPassword.text = passwordGuardado ?? '';
@@ -51,18 +51,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadCifs() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? cifs = prefs.getStringList('cif_empresa_list');
-    String? ultimoCif = prefs.getString('cif_empresa');
+    final prefs = await SharedPreferences.getInstance();
+    final cifs = prefs.getStringList('cif_empresa_list');
+    final ultimoCif = prefs.getString('cif_empresa');
 
     if (cifs != null && cifs.isNotEmpty) {
       setState(() {
         listaCifs = cifs;
-        if (ultimoCif != null && listaCifs.contains(ultimoCif)) {
-          cifSeleccionado = ultimoCif;
-        } else {
-          cifSeleccionado = listaCifs.first;
-        }
+        cifSeleccionado = (ultimoCif != null && cifs.contains(ultimoCif))
+            ? ultimoCif
+            : cifs.first;
       });
     }
   }
@@ -76,12 +74,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> btnVLoginEntrar() async {
     FocusScope.of(context).unfocus();
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-
+    if (!_formKey.currentState!.validate()) return;
     if (cifSeleccionado == null || cifSeleccionado!.isEmpty) {
-      setState(() {
-        vaErrorMessage = 'Debes seleccionar un CIF.';
-      });
+      setState(() => vaErrorMessage = 'Debes seleccionar un CIF.');
       return;
     }
 
@@ -90,8 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
       vaErrorMessage = null;
     });
 
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-
+    final prefs = await SharedPreferences.getInstance();
     final empleado = await AuthService.loginLocal(
       txtVLoginUsuario.text.trim(),
       txtVLoginPassword.text,
@@ -99,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (empleado != null) {
-      // Guardar usuario y contraseña si se seleccionó recordar usuario
+      // Recordar credenciales
       if (vaRecordarUsuario) {
         await prefs.setString('usuario_recordado', txtVLoginUsuario.text.trim());
         await prefs.setString('password_recordado', txtVLoginPassword.text);
@@ -108,31 +102,22 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove('password_recordado');
       }
 
-      // Guardar datos clave en SharedPreferences
+      // Guardar datos en SharedPreferences
       await prefs.setString('cif_empresa', cifSeleccionado!);
       await prefs.setString('usuario', empleado.usuario);
       await prefs.setString('nombre_empleado', empleado.nombre ?? '');
       await prefs.setString('dni_empleado', empleado.dni ?? '');
       await prefs.setString('id_sucursal', '');
-
-      // Guardar token y URL base desde config.dart
-      await prefs.setString('token', '123456.abcd'); // Cambia este token por el real
+      await prefs.setString('token', '123456.abcd');
       await prefs.setString('baseUrl', BASE_URL);
-
-      print('[LOGIN] Token global guardado: 123456.abcd');
-      print('[LOGIN] URL base guardada: $BASE_URL');
-
       await prefs.setInt('puede_localizar', empleado.puedeLocalizar);
 
       if (!mounted) return;
 
       final rol = empleado.rol?.toLowerCase() ?? '';
-      print('[LOGIN] Rol usuario: $rol');
-
       if (rol == 'admin') {
         final adminProvider = AdminProvider(empleado.cifEmpresa);
         await adminProvider.cargarDatosIniciales();
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -152,10 +137,9 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => SupervisorScreen(cifEmpresa: empleado.cifEmpresa),
           ),
         );
-      } else if (rol == 'empleado') {
+      } else {
         final adminProvider = AdminProvider(empleado.cifEmpresa);
         await adminProvider.cargarDatosIniciales();
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -168,30 +152,150 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         );
-      } else {
-        setState(() {
-          vaErrorMessage = 'Rol no autorizado.';
-        });
       }
     } else {
-      setState(() {
-        vaErrorMessage = "Usuario o contraseña incorrectos.";
-      });
+      setState(() => vaErrorMessage = "Usuario o contraseña incorrectos.");
     }
 
-    setState(() {
-      vaIsLoading = false;
-    });
+    setState(() => vaIsLoading = false);
+  }
+
+  void _mostrarDialogoCambiarPassword(BuildContext context) {
+    final currentPassCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    final _formKeyDialog = GlobalKey<FormState>();
+    bool loading = false;
+    bool ob1 = true, ob2 = true, ob3 = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx2, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Text("Cambiar contraseña"),
+              content: Form(
+                key: _formKeyDialog,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: currentPassCtrl,
+                      obscureText: ob1,
+                      decoration: InputDecoration(
+                        labelText: "Contraseña actual",
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              ob1 ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () =>
+                              setStateDialog(() => ob1 = !ob1),
+                        ),
+                      ),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? "Obligatorio" : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: newPassCtrl,
+                      obscureText: ob2,
+                      decoration: InputDecoration(
+                        labelText: "Nueva contraseña",
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              ob2 ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () =>
+                              setStateDialog(() => ob2 = !ob2),
+                        ),
+                      ),
+                      validator: (v) => v == null || v.length < 6
+                          ? "Mínimo 6 caracteres"
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: confirmPassCtrl,
+                      obscureText: ob3,
+                      decoration: InputDecoration(
+                        labelText: "Confirmar nueva contraseña",
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              ob3 ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () =>
+                              setStateDialog(() => ob3 = !ob3),
+                        ),
+                      ),
+                      validator: (v) =>
+                          v != newPassCtrl.text ? "No coinciden" : null,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx2),
+                  child: const Text("Cancelar"),
+                ),
+                ElevatedButton(
+                  onPressed: loading
+                      ? null
+                      : () async {
+                          if (!_formKeyDialog.currentState!.validate())
+                            return;
+                          setStateDialog(() => loading = true);
+
+                          final prefs = await SharedPreferences.getInstance();
+                          final cif = cifSeleccionado ?? '';
+                          final usuario = txtVLoginUsuario.text.trim();
+
+                          final success = await AuthService.cambiarPassword(
+                            usuario: usuario,
+                            cifEmpresa: cif,
+                            actual: currentPassCtrl.text.trim(),
+                            nueva: newPassCtrl.text.trim(),
+                          );
+
+                          setStateDialog(() => loading = false);
+                          Navigator.pop(ctx2);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(success
+                                  ? "Contraseña cambiada con éxito"
+                                  : "Error al cambiar la contraseña"),
+                            ),
+                          );
+                        },
+                  child: loading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Guardar"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final double ancho = MediaQuery.of(context).size.width;
+    final ancho = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Iniciar sesión',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
@@ -211,7 +315,8 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Center(
         child: SingleChildScrollView(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             width: ancho > 400 ? 400 : ancho * 0.95,
             decoration: BoxDecoration(
               color: Colors.white,
@@ -236,6 +341,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 24),
+
+                  // Dropdown de CIFs
                   if (listaCifs.isEmpty)
                     const Text(
                       'No hay CIFs disponibles. Ve a la pantalla anterior para añadirlos.',
@@ -249,66 +356,54 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       value: cifSeleccionado,
                       items: listaCifs
-                          .map((cif) => DropdownMenuItem(
-                                value: cif,
-                                child: Text(cif),
+                          .map((c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(c),
                               ))
                           .toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          cifSeleccionado = val;
-                        });
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Selecciona un CIF';
-                        }
-                        return null;
-                      },
+                      onChanged: (v) =>
+                          setState(() => cifSeleccionado = v),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Selecciona un CIF' : null,
                     ),
+
                   const SizedBox(height: 20),
+                  // Usuario
                   TextFormField(
                     controller: txtVLoginUsuario,
                     decoration: const InputDecoration(
                       labelText: 'Usuario',
                       prefixIcon: Icon(Icons.person, color: Colors.blue),
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Introduce el usuario";
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? "Introduce el usuario" : null,
                     enabled: !vaIsLoading,
                   ),
+
                   const SizedBox(height: 20),
+                  // Contraseña
                   TextFormField(
                     controller: txtVLoginPassword,
+                    obscureText: vaObscurePassword,
                     decoration: InputDecoration(
                       labelText: 'Contraseña',
                       prefixIcon: const Icon(Icons.lock, color: Colors.blue),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          vaObscurePassword ? Icons.visibility : Icons.visibility_off,
+                          vaObscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                           color: Colors.blueGrey,
                         ),
-                        onPressed: () {
-                          setState(() {
-                            vaObscurePassword = !vaObscurePassword;
-                          });
-                        },
+                        onPressed: () =>
+                            setState(() => vaObscurePassword = !vaObscurePassword),
                       ),
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return "Introduce la contraseña";
-                      }
-                      return null;
-                    },
-                    obscureText: vaObscurePassword,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? "Introduce la contraseña" : null,
                     enabled: !vaIsLoading,
                   ),
+
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -316,23 +411,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         value: vaRecordarUsuario,
                         onChanged: vaIsLoading
                             ? null
-                            : (value) {
-                                setState(() {
-                                  vaRecordarUsuario = value ?? false;
-                                });
-                              },
+                            : (v) => setState(() => vaRecordarUsuario = v!),
                         activeColor: Colors.blue,
                       ),
                       const Text("Recordar usuario"),
                     ],
                   ),
+
                   if (vaErrorMessage != null) ...[
                     const SizedBox(height: 16),
                     Text(
                       vaErrorMessage!,
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          color: Colors.red, fontWeight: FontWeight.bold),
                     ),
                   ],
+
                   const SizedBox(height: 32),
                   vaIsLoading
                       ? const CircularProgressIndicator(color: Colors.blue)
@@ -343,7 +437,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue,
                               foregroundColor: Colors.white,
-                              textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                              textStyle: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 18),
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -352,6 +447,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: const Text('Entrar'),
                           ),
                         ),
+
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () => _mostrarDialogoCambiarPassword(context),
+                    child: const Text(
+                      "Cambiar contraseña",
+                      style: TextStyle(
+                          color: Colors.blue, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ],
               ),
             ),

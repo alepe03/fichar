@@ -1,23 +1,80 @@
-import '../db/database_helper.dart';   // Importa el helper para la base de datos local
-import '../models/empleado.dart';      // Importa el modelo de empleado
+// lib/services/auth_service.dart
 
-// Servicio de autenticación
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../db/database_helper.dart';
+import '../models/empleado.dart';
+import '../config.dart';
+
 class AuthService {
-  // Método estático para login local
-  // Busca un empleado en la base de datos local por usuario, contraseña y CIF de empresa
-  static Future<Empleado?> loginLocal(String usuario, String password, String cifEmpresa) async {
-    final db = await DatabaseHelper.instance.database; // Obtiene la instancia de la base de datos
-    final result = await db.query(
-      'empleados', // Tabla empleados
-      where: 'usuario = ? AND password_hash = ? AND cif_empresa = ?', // Condición de búsqueda
-      whereArgs: [usuario, password, cifEmpresa], // Argumentos para la consulta
-      limit: 1, // Solo un resultado
+  /// Login local sin cambios
+  static Future<Empleado?> loginLocal(
+    String usuario,
+    String password,
+    String cifEmpresa,
+  ) async {
+    final db = await DatabaseHelper.instance.database;
+    final results = await db.query(
+      'empleados',
+      where: 'usuario = ? AND cif_empresa = ? AND activo = 1',
+      whereArgs: [usuario, cifEmpresa],
+      limit: 1,
     );
-    if (result.isNotEmpty) {
-      // Si encuentra un empleado, lo devuelve como objeto Empleado
-      return Empleado.fromMap(result.first);
+    if (results.isEmpty) return null;
+    final empleado = Empleado.fromMap(results.first);
+    if (!_validarPassword(password, empleado.passwordHash)) {
+      return null;
     }
-    // Si no encuentra, devuelve null
-    return null;
+    return empleado;
+  }
+
+  /// Cambiar contraseña: primero al servidor (Code=207), luego local
+  static Future<bool> cambiarPassword({
+    required String usuario,
+    required String cifEmpresa,
+    required String actual,
+    required String nueva,
+  }) async {
+    // 1) Obtener token y baseUrl guardados
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    final baseUrl = prefs.getString('baseUrl') ?? '';
+    if (token.isEmpty || baseUrl.isEmpty) return false;
+
+    // 2) Llamada POST al endpoint remoto ?Code=207
+    final uri = Uri.parse('$baseUrl?Code=207');
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'Token': token,
+        'usuario': usuario,
+        'cif_empresa': cifEmpresa,
+        'actual': actual,
+        'nueva': nueva,
+      },
+    );
+    if (resp.statusCode != 200 || !resp.body.startsWith('OK;')) {
+      return false;
+    }
+
+    // 3) Si el servidor respondió OK, actualizar también en SQLite local
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+      'empleados',
+      {'password_hash': nueva},
+      where: 'usuario = ? AND cif_empresa = ?',
+      whereArgs: [usuario, cifEmpresa],
+    );
+
+    return true;
+  }
+
+  /// Comparación simple de password plano vs hash
+  static bool _validarPassword(String ingresada, String? hash) {
+    if (hash == null) return false;
+    return ingresada == hash;
   }
 }

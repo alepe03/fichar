@@ -7,7 +7,7 @@ import '../models/incidencia.dart';
 import '../db/database_helper.dart';
 import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
-import '../services/historico_service.dart';  // Importar el servicio
+import '../services/historico_service.dart';
 
 class AdminProvider extends ChangeNotifier {
   List<Empleado> empleados = [];
@@ -44,8 +44,8 @@ class AdminProvider extends ChangeNotifier {
   Future<void> sincronizarHistoricoCompleto() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
-    final baseUrl = prefs.getString('baseUrl') ?? ''; // Asumo guardas la url base en prefs
-    final nombreBD = cifEmpresa; // Usas cifEmpresa como base de datos o parámetro
+    final baseUrl = prefs.getString('baseUrl') ?? '';
+    final nombreBD = cifEmpresa;
 
     if (token.isEmpty || baseUrl.isEmpty) {
       print('[AdminProvider.sincronizarHistoricoCompleto] Token o baseUrl no configurados');
@@ -71,28 +71,44 @@ class AdminProvider extends ChangeNotifier {
     print('[AdminProvider] Fin cargarDatosIniciales');
   }
 
-  // Métodos para manejar empleados e incidencias (add/update/delete) sin cambios
+  /// Agregar empleado nuevo
   Future<String?> addEmpleado(Empleado empleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
-    final respuesta = await EmpleadoService.insertarEmpleadoRemoto(empleado: empleado, token: token);
-    if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.insert('empleados', empleado.toMap());
-      await cargarEmpleados();
-      return null;
-    } else {
-      return respuesta;
+
+    try {
+      final respuesta = await EmpleadoService.insertarEmpleadoRemoto(
+        empleado: empleado,
+        token: token,
+      );
+
+      if (respuesta.startsWith("OK")) {
+        final db = await DatabaseHelper.instance.database;
+        await db.insert('empleados', empleado.toMap());
+        await cargarEmpleados();
+        return null;
+      } else {
+        return respuesta;
+      }
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
   }
 
+  /// Actualizar empleado sin sobrescribir contraseña vacía
   Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
 
     try {
+      // ✅ Si la contraseña está vacía o es null, no la enviamos
+      final Empleado empleadoParaEnviar =
+          (empleado.passwordHash == null || empleado.passwordHash!.isEmpty)
+              ? empleado.copyWith(passwordHash: null)
+              : empleado;
+
       final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
-        empleado: empleado,
+        empleado: empleadoParaEnviar,
         usuarioOriginal: usuarioOriginal,
         token: token,
       );
@@ -113,9 +129,15 @@ class AdminProvider extends ChangeNotifier {
         return 'No existe registro con usuario $usuarioOriginal y empresa ${empleado.cifEmpresa}';
       }
 
+      // ✅ No sobrescribir password local si está vacía
+      final Map<String, dynamic> dataLocal = empleado.toMap();
+      if (empleado.passwordHash == null || empleado.passwordHash!.isEmpty) {
+        dataLocal.remove('password_hash');
+      }
+
       final count = await db.update(
         'empleados',
-        empleado.toMap(),
+        dataLocal,
         where: 'usuario = ? AND cif_empresa = ?',
         whereArgs: [usuarioOriginal, empleado.cifEmpresa],
       );
@@ -128,6 +150,63 @@ class AdminProvider extends ChangeNotifier {
       return null;
     } catch (e) {
       return 'Error actualizando empleado: $e';
+    }
+  }
+
+  /// Baja lógica
+  Future<String?> bajaEmpleado(String usuario) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+
+    final empleadoActual = empleados.firstWhere(
+      (e) => e.usuario == usuario,
+      orElse: () => Empleado(usuario: usuario, cifEmpresa: cifEmpresa, activo: 0),
+    );
+
+    final empleadoBaja = Empleado(
+      usuario: empleadoActual.usuario,
+      cifEmpresa: empleadoActual.cifEmpresa,
+      direccion: empleadoActual.direccion,
+      poblacion: empleadoActual.poblacion,
+      codigoPostal: empleadoActual.codigoPostal,
+      telefono: empleadoActual.telefono,
+      email: empleadoActual.email,
+      nombre: empleadoActual.nombre,
+      dni: empleadoActual.dni,
+      rol: empleadoActual.rol,
+      passwordHash: empleadoActual.passwordHash,
+      puedeLocalizar: empleadoActual.puedeLocalizar,
+      activo: 0,
+    );
+
+    try {
+      final respuesta = await EmpleadoService.actualizarEmpleadoRemoto(
+        empleado: empleadoBaja,
+        usuarioOriginal: usuario,
+        token: token,
+      );
+
+      if (!respuesta.startsWith('OK')) {
+        return respuesta;
+      }
+
+      final db = await DatabaseHelper.instance.database;
+
+      final count = await db.update(
+        'empleados',
+        empleadoBaja.toMap(),
+        where: 'usuario = ? AND cif_empresa = ?',
+        whereArgs: [usuario, cifEmpresa],
+      );
+
+      if (count == 0) {
+        return 'No se encontró el registro para dar de baja';
+      }
+
+      await cargarEmpleados();
+      return null;
+    } catch (e) {
+      return 'Error dando de baja empleado: $e';
     }
   }
 
