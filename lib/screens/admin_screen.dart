@@ -25,12 +25,14 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      setState(() => _isLoading = true);
       final provider = Provider.of<AdminProvider>(context, listen: false);
       print('[AdminScreen] Iniciando sincronización completa...');
       await provider.sincronizarHistoricoCompleto();
@@ -39,6 +41,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       await provider.cargarHistoricos();
       print('[AdminScreen] Históricos cargados: ${provider.historicos.length}');
       await provider.cargarIncidencias();
+      setState(() => _isLoading = false);
     });
   }
 
@@ -66,14 +69,16 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          UsuariosTab(),
-          FichajesTab(),
-          IncidenciasTab(),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tabController,
+              children: const [
+                UsuariosTab(),
+                FichajesTab(),
+                IncidenciasTab(),
+              ],
+            ),
     );
   }
 }
@@ -227,31 +232,6 @@ class _UsuariosTabState extends State<UsuariosTab> {
                                     }
                                   },
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                                  tooltip: 'Eliminar usuario',
-                                  onPressed: () async {
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: const Text('Confirmar eliminación'),
-                                        content: Text('¿Quieres eliminar definitivamente al usuario "${emp.usuario}"?'),
-                                        actions: [
-                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true) {
-                                      final error = await provider.deleteEmpleado(emp.usuario);
-                                      if (error != null && context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
                               ],
                             ),
                             onTap: () => _abrirDialogo(context, provider, empleado: emp),
@@ -283,6 +263,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
     );
   }
 }
+
 
 class _FormularioEmpleado extends StatefulWidget {
   final String cifEmpresa;
