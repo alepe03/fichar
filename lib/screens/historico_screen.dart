@@ -1,9 +1,17 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';  // Import para formateo de fechas
+import 'package:intl/intl.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+
 import '../models/historico.dart';
 import '../services/historico_service.dart';
 
-// --------- MODELOS DE AGRUPADO ---------
+const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
+
 class SesionTrabajo {
   final Historico? entrada;
   final Historico? salida;
@@ -17,11 +25,10 @@ class SesionTrabajo {
 
 class IncidenciaEnSesion {
   final Historico incidencia;
-  String contexto; // "Entrada", "Salida" o "Sin entrada/salida"
+  String contexto;
   IncidenciaEnSesion(this.incidencia, this.contexto);
 }
 
-// --------- WIDGET PRINCIPAL ---------
 class HistoricoScreen extends StatefulWidget {
   final String usuario;
   final String cifEmpresa;
@@ -36,6 +43,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
   List<Historico> registros = [];
   bool cargando = true;
   String? errorMsg;
+  String? _dniUsuario;
 
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
@@ -60,7 +68,13 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         return dt != null && dt.year == _selectedYear && dt.month == _selectedMonth;
       }).toList();
 
-      // Ordena por fecha relevante ascendente para agrupar bien
+      if (registros.isNotEmpty) {
+        _dniUsuario = registros.firstWhere(
+          (h) => h.dniEmpleado != null && h.dniEmpleado!.isNotEmpty,
+          orElse: () => registros.first,
+        ).dniEmpleado;
+      }
+
       registros.sort((a, b) {
         final fechaA = (a.tipo == 'Salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
         final fechaB = (b.tipo == 'Salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
@@ -91,7 +105,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         .toList();
   }
 
-  // -------- AGRUPADOR MEJORADO --------
   List<SesionTrabajo> _agruparSesiones(List<Historico> registros) {
     List<SesionTrabajo> sesiones = [];
     Historico? entradaPendiente;
@@ -127,11 +140,10 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
       } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
         String contexto = 'Sin entrada/salida';
         if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
-          contexto = 'Salida'; // Invertido según requerimiento
+          contexto = 'Salida';
         } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
-          contexto = 'Entrada'; // Invertido según requerimiento
+          contexto = 'Entrada';
         }
-
         if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
           sesiones.add(SesionTrabajo(
             entrada: null,
@@ -153,7 +165,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
       incidenciasPendientes.clear();
     }
 
-    // Añadimos incidencias sin sesión que hayan quedado pendientes
     if (incidenciasPendientes.isNotEmpty) {
       final sinContexto = incidenciasPendientes.where((inc) => inc.contexto == 'Sin entrada/salida').toList();
       for (var inc in sinContexto) {
@@ -168,22 +179,99 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     return sesiones.reversed.toList();
   }
 
-  // Función para formatear fecha en pantalla
   String formatFecha(String? fechaStr) {
-    if (fechaStr == null || fechaStr.isEmpty) return '--';
+    if (fechaStr == null || fechaStr.isEmpty) return '-';
     final dt = DateTime.tryParse(fechaStr);
-    if (dt == null) return '--';
+    if (dt == null) return '-';
     return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+  }
+
+  Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones) async {
+    final pdf = pw.Document();
+    final usuario = widget.usuario;
+    final dni = _dniUsuario ?? '-';
+
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) {
+          return [
+            pw.Header(level: 0, child: pw.Text('Mi histórico de fichajes', style: pw.TextStyle(fontSize: 24))),
+            pw.Table.fromTextArray(
+              headers: ['Usuario', 'DNI', 'Entrada', 'Salida', 'Tiempo trabajado', 'Incidencias'],
+              data: sesiones.map((sesion) {
+                final entradaStr = formatFecha(sesion.entrada?.fechaEntrada);
+                final salidaStr = formatFecha(sesion.salida?.fechaSalida);
+
+                String tiempoTrabajado = '';
+                if (sesion.entrada != null && sesion.salida != null) {
+                  final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
+                  final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
+                  if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
+                    final duracion = dtSalida.difference(dtEntrada);
+                    final horas = duracion.inHours.toString().padLeft(2, '0');
+                    final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
+                    tiempoTrabajado = '$horas:$minutos h';
+                  }
+                }
+
+                final incidenciasText = sesion.incidencias.isNotEmpty
+                    ? sesion.incidencias.map((inc) {
+                        final c = inc.incidencia.incidenciaCodigo ?? '-';
+                        final o = inc.incidencia.observaciones ?? '';
+                        return '$c${o.isNotEmpty ? ' ($o)' : ''}';
+                      }).join(', ')
+                    : '-';
+
+                return [usuario, dni, entradaStr, salidaStr, tiempoTrabajado.isNotEmpty ? tiempoTrabajado : '-', incidenciasText];
+              }).toList(),
+            ),
+          ];
+        },
+      ),
+    );
+    return pdf;
+  }
+
+  Future<String> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final fileName = 'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${widget.usuario}.pdf';
+    final filePath = '${dir.path}/$fileName';
+    final file = File(filePath);
+    await file.writeAsBytes(pdfBytes);
+    return filePath;
+  }
+
+  Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones) async {
+    try {
+      final pdf = await _crearPdf(sesiones);
+      final pdfBytes = await pdf.save();
+      final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF guardado en: $rutaGuardado')));
+      }
+
+      final resultado = await OpenFile.open(rutaGuardado);
+      if (resultado.type != ResultType.done && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir el PDF automáticamente.')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al exportar PDF: $e')));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final sesiones = _agruparSesiones(registros);
+
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Mi histórico", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+        title: const Text("Mi histórico", style: TextStyle(color: kPrimaryBlue, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.blue),
+        iconTheme: const IconThemeData(color: kPrimaryBlue),
         elevation: 1,
       ),
       body: Padding(
@@ -191,29 +279,52 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filtros de año y mes
-            Row(
+            // ✅ Filtros + botón adaptables con Wrap
+            Wrap(
+              alignment: WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                const Text("Año:", style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 8),
-                DropdownButton<int>(
-                  value: _selectedYear,
-                  items: _buildYears(),
-                  onChanged: (v) => setState(() {
-                    _selectedYear = v!;
-                    _cargarRegistros();
-                  }),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Año:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 8),
+                    DropdownButton<int>(
+                      value: _selectedYear,
+                      items: _buildYears(),
+                      onChanged: (v) => setState(() {
+                        _selectedYear = v!;
+                        _cargarRegistros();
+                      }),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                const Text("Mes:", style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 8),
-                DropdownButton<int>(
-                  value: _selectedMonth,
-                  items: _buildMonths(),
-                  onChanged: (v) => setState(() {
-                    _selectedMonth = v!;
-                    _cargarRegistros();
-                  }),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Mes:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 8),
+                    DropdownButton<int>(
+                      value: _selectedMonth,
+                      items: _buildMonths(),
+                      onChanged: (v) => setState(() {
+                        _selectedMonth = v!;
+                        _cargarRegistros();
+                      }),
+                    ),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
+                  label: const Text('Exportar', style: TextStyle(color: Colors.white, fontSize: 14)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: cargando || sesiones.isEmpty ? null : () => _exportarPdfDescargar(sesiones),
                 ),
               ],
             ),
@@ -241,19 +352,19 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: s.incidencias.map((inc) => Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                          '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}',
-                                          style: const TextStyle(color: Colors.orange),
-                                        ),
-                                      ),
-                                    ],
-                                  )).toList(),
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                              '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}',
+                                              style: const TextStyle(color: Colors.orange),
+                                            ),
+                                          ),
+                                        ],
+                                      )).toList(),
                                 ),
                               ),
                             );
@@ -302,24 +413,24 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                                   if (tiempo.isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                      child: Text('Tiempo trabajado: $tiempo', style: TextStyle(color: Colors.blue)),
+                                      child: Text('Tiempo trabajado: $tiempo', style: TextStyle(color: kPrimaryBlue)),
                                     ),
                                   if (s.incidencias.isNotEmpty)
                                     ...s.incidencias.map((inc) => Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                            '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                            ' — ${inc.contexto}',
-                                            style: const TextStyle(color: Colors.orange),
-                                          ),
-                                        ),
-                                      ],
-                                    )),
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
+                                                '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
+                                                ' — ${inc.contexto}',
+                                                style: const TextStyle(color: Colors.orange),
+                                              ),
+                                            ),
+                                          ],
+                                        )),
                                 ],
                               ),
                             ),

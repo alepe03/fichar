@@ -595,78 +595,95 @@ class _FichajesTabState extends State<FichajesTab> {
     }).toList();
   }
 
-  List<SesionTrabajo> _agruparSesiones(List<Historico> registros) {
-    List<SesionTrabajo> sesiones = [];
-    Historico? entradaPendiente;
-    List<IncidenciaEnSesion> incidenciasPendientes = [];
-
+  List<SesionTrabajo> _agruparSesionesPorUsuario(List<Historico> registros) {
+    // Agrupa por usuario, no mezcla sesiones de empleados distintos
+    Map<String, List<Historico>> porUsuario = {};
     for (final reg in registros) {
-      if (reg.tipo?.toLowerCase() == 'entrada') {
-        if (entradaPendiente != null) {
-          sesiones.add(SesionTrabajo(
-            entrada: entradaPendiente,
-            salida: null,
-            incidencias: List.of(incidenciasPendientes),
-          ));
-          incidenciasPendientes.clear();
-        }
-        entradaPendiente = reg;
-      } else if (reg.tipo?.toLowerCase() == 'salida') {
-        if (entradaPendiente != null) {
-          sesiones.add(SesionTrabajo(
-            entrada: entradaPendiente,
-            salida: reg,
-            incidencias: List.of(incidenciasPendientes),
-          ));
-          entradaPendiente = null;
-          incidenciasPendientes.clear();
-        } else {
-          sesiones.add(SesionTrabajo(
-            entrada: null,
-            salida: reg,
-            incidencias: [],
-          ));
-        }
-      } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
-        String contexto = 'Sin entrada/salida';
-        if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
-          contexto = 'Salida';
-        } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
-          contexto = 'Entrada';
-        }
-        if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
-          sesiones.add(SesionTrabajo(
-            entrada: null,
-            salida: null,
-            incidencias: [IncidenciaEnSesion(reg, contexto)],
-          ));
-        } else {
-          incidenciasPendientes.add(IncidenciaEnSesion(reg, contexto));
+      if (reg.usuario == null) continue;
+      porUsuario.putIfAbsent(reg.usuario!, () => []).add(reg);
+    }
+    List<SesionTrabajo> sesiones = [];
+    porUsuario.forEach((usuario, regsUsuario) {
+      // Ordenar por fecha relevante
+      regsUsuario.sort((a, b) {
+        final fechaA = (a.tipo?.toLowerCase() == 'salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
+        final fechaB = (b.tipo?.toLowerCase() == 'salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
+        return fechaA.compareTo(fechaB);
+      });
+      Historico? entradaPendiente;
+      List<IncidenciaEnSesion> incidenciasPendientes = [];
+      for (final reg in regsUsuario) {
+        if (reg.tipo?.toLowerCase() == 'entrada') {
+          if (entradaPendiente != null) {
+            sesiones.add(SesionTrabajo(
+              entrada: entradaPendiente,
+              salida: null,
+              incidencias: List.of(incidenciasPendientes),
+            ));
+            incidenciasPendientes.clear();
+          }
+          entradaPendiente = reg;
+        } else if (reg.tipo?.toLowerCase() == 'salida') {
+          if (entradaPendiente != null) {
+            sesiones.add(SesionTrabajo(
+              entrada: entradaPendiente,
+              salida: reg,
+              incidencias: List.of(incidenciasPendientes),
+            ));
+            entradaPendiente = null;
+            incidenciasPendientes.clear();
+          } else {
+            sesiones.add(SesionTrabajo(
+              entrada: null,
+              salida: reg,
+              incidencias: [],
+            ));
+          }
+        } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
+          String contexto = 'Sin entrada/salida';
+          if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
+            contexto = 'Salida';
+          } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
+            contexto = 'Entrada';
+          }
+          if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
+            sesiones.add(SesionTrabajo(
+              entrada: null,
+              salida: null,
+              incidencias: [IncidenciaEnSesion(reg, contexto)],
+            ));
+          } else {
+            incidenciasPendientes.add(IncidenciaEnSesion(reg, contexto));
+          }
         }
       }
-    }
-
-    if (entradaPendiente != null) {
-      sesiones.add(SesionTrabajo(
-        entrada: entradaPendiente,
-        salida: null,
-        incidencias: List.of(incidenciasPendientes),
-      ));
-      incidenciasPendientes.clear();
-    }
-
-    if (incidenciasPendientes.isNotEmpty) {
-      final sinContexto = incidenciasPendientes.where((inc) => inc.contexto == 'Sin entrada/salida').toList();
-      for (var inc in sinContexto) {
+      if (entradaPendiente != null) {
         sesiones.add(SesionTrabajo(
-          entrada: null,
+          entrada: entradaPendiente,
           salida: null,
-          incidencias: [inc],
+          incidencias: List.of(incidenciasPendientes),
         ));
+        incidenciasPendientes.clear();
       }
-    }
+      if (incidenciasPendientes.isNotEmpty) {
+        final sinContexto = incidenciasPendientes.where((inc) => inc.contexto == 'Sin entrada/salida').toList();
+        for (var inc in sinContexto) {
+          sesiones.add(SesionTrabajo(
+            entrada: null,
+            salida: null,
+            incidencias: [inc],
+          ));
+        }
+      }
+    });
 
-    return sesiones.reversed.toList();
+    // Orden descendente por fecha
+    sesiones.sort((a, b) {
+      final fechaA = a.entrada?.fechaEntrada ?? a.salida?.fechaSalida ?? '';
+      final fechaB = b.entrada?.fechaEntrada ?? b.salida?.fechaSalida ?? '';
+      return fechaB.compareTo(fechaA);
+    });
+    return sesiones;
   }
 
   String formatFecha(String? fechaStr) {
@@ -676,7 +693,7 @@ class _FichajesTabState extends State<FichajesTab> {
     return DateFormat('dd/MM/yyyy HH:mm').format(dt);
   }
 
-  Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados) async {
+  Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados, Map<String, Incidencia> mapaIncidencias) async {
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -727,7 +744,11 @@ class _FichajesTabState extends State<FichajesTab> {
                     ? sesion.incidencias.map((inc) {
                         final c = inc.incidencia.incidenciaCodigo ?? '-';
                         final o = inc.incidencia.observaciones ?? '';
-                        return '$c${o.isNotEmpty ? ' ($o)' : ''}';
+                        final completa = mapaIncidencias[c];
+                        final computaTexto = completa != null
+                            ? (completa.computa ? 'Computa' : 'No computa')
+                            : '';
+                        return '$c${o.isNotEmpty ? ' ($o)' : ''}${computaTexto.isNotEmpty ? ' - $computaTexto' : ''}';
                       }).join(', ')
                     : '-';
 
@@ -760,9 +781,9 @@ class _FichajesTabState extends State<FichajesTab> {
     return filePath;
   }
 
-  Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados) async {
+  Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados, Map<String, Incidencia> mapaIncidencias) async {
     try {
-      final pdf = await _crearPdf(sesiones, mapaEmpleados);
+      final pdf = await _crearPdf(sesiones, mapaEmpleados, mapaIncidencias);
       final pdfBytes = await pdf.save();
       final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
 
@@ -798,7 +819,7 @@ class _FichajesTabState extends State<FichajesTab> {
         }
 
         final registrosFiltrados = _filtrarRegistros(provider.historicos);
-        final sesiones = _agruparSesiones(registrosFiltrados);
+        final sesiones = _agruparSesionesPorUsuario(registrosFiltrados);
 
         final Map<String, Empleado> mapaEmpleados = {
           for (var e in provider.empleados) e.usuario: e
@@ -864,9 +885,9 @@ class _FichajesTabState extends State<FichajesTab> {
                       ElevatedButton.icon(
                         icon: const Icon(Icons.picture_as_pdf),
                         label: const Text('Exportar PDF'),
-                        onPressed: () => _exportarPdfDescargar(sesiones, mapaEmpleados),
+                        onPressed: () => _exportarPdfDescargar(sesiones, mapaEmpleados, mapaIncidencias),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: kPrimaryBlue,
+                          backgroundColor: const Color.fromARGB(255, 33, 150, 243),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
@@ -1019,7 +1040,7 @@ class _FichajesTabState extends State<FichajesTab> {
                                     Padding(
                                       padding: const EdgeInsets.only(top: 6),
                                       child: Text('Tiempo trabajado: $tiempoTrabajado',
-                                          style: const TextStyle(color: kPrimaryBlue)),
+                                          style: const TextStyle(color: Color.fromARGB(255, 33, 150, 243))),
                                     ),
                                 ],
                               ),
@@ -1036,6 +1057,7 @@ class _FichajesTabState extends State<FichajesTab> {
   }
 }
 
+// Modelos auxiliares
 class SesionTrabajo {
   final Historico? entrada;
   final Historico? salida;
@@ -1052,6 +1074,7 @@ class IncidenciaEnSesion {
   String contexto; // "Entrada", "Salida", o "Sin entrada/salida"
   IncidenciaEnSesion(this.incidencia, this.contexto);
 }
+
 
 // ===== Incidencias Tab =====
 

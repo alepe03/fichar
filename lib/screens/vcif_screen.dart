@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http; // Import para peticiones HTTP
+import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../services/empleado_service.dart';
 import '../services/sucursal_service.dart';
@@ -44,25 +44,24 @@ class _VCifScreenState extends State<VCifScreen> {
 
   Future<bool> validarCifEnServidor(String cif) async {
     try {
-      const token = '123456.abcd'; // Usa tu token real o gestiónalo mejor
+      const token = '123456.abcd';
       final url = Uri.parse('$BASE_URL?Code=700&cif_empresa=$cif&Token=$token');
       final response = await http.get(url);
-      if (response.statusCode == 200) {
-        if (response.body.contains('OK')) {
-          return true;
-        }
+      if (response.statusCode == 200 && response.body.contains('OK')) {
+        return true;
       }
-    } catch (e) {
-      // Manejo de error opcional
-    }
+    } catch (_) {}
     return false;
   }
 
   void _irALogin() {
     if (listaCifs.isEmpty) {
-      setState(() {
-        etiVCifError = 'Debes añadir al menos un CIF antes de continuar.';
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes añadir al menos un CIF antes de continuar'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     Navigator.pushReplacementNamed(context, '/login');
@@ -107,80 +106,122 @@ class _VCifScreenState extends State<VCifScreen> {
         IncidenciaService.descargarYGuardarIncidencias(nuevoCif, token, BASE_URL),
       ]);
     } catch (e) {
-      setState(() {
-        etiVCifError = 'Error descargando datos para $nuevoCif: $e';
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error descargando datos: $e')),
+      );
     } finally {
-      setState(() {
-        vaIsLoading = false;
-      });
+      setState(() => vaIsLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ CIF $nuevoCif añadido correctamente')),
+      );
     }
   }
 
   void _borrarCif(int index) {
-    setState(() {
-      listaCifs.removeAt(index);
-    });
-    _guardarListaCifs();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Eliminar CIF', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('¿Seguro que quieres eliminar ${listaCifs[index]}?',
+            style: const TextStyle(fontSize: 16)),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.blue, fontSize: 16)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                listaCifs.removeAt(index);
+              });
+              _guardarListaCifs();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('CIF eliminado')),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _editarCif(int index) {
     final controller = TextEditingController(text: listaCifs[index]);
-
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Modificar CIF'),
-        content: TextField(
-          controller: controller,
-          textCapitalization: TextCapitalization.none,
-          decoration: const InputDecoration(hintText: 'Nuevo CIF'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                final cifEditado = controller.text.trim();
-                if (cifEditado.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Introduce un CIF válido')),
-                  );
-                  return;
-                }
-                if (listaCifs.contains(cifEditado) && cifEditado != listaCifs[index]) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('El CIF ya está en la lista')),
-                  );
-                  return;
-                }
-                setState(() {
-                  vaIsLoading = true;
-                  etiVCifError = null;
-                });
-                final existe = await validarCifEnServidor(cifEditado);
-                if (!existe) {
-                  setState(() {
-                    vaIsLoading = false;
-                    etiVCifError = 'El CIF no existe en la base de datos';
-                  });
-                  return;
-                }
-                setState(() {
-                  listaCifs[index] = cifEditado;
-                });
-                await _guardarListaCifs();
-                setState(() {
-                  vaIsLoading = false;
-                });
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Modificar CIF', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Nuevo CIF',
+                prefixIcon: Icon(Icons.edit, color: Colors.blue),
+                border: OutlineInputBorder(),
               ),
-              child: const Text('Guardar'),
             ),
+            const SizedBox(height: 16),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.blue, fontSize: 16)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final cifEditado = controller.text.trim();
+              if (cifEditado.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Introduce un CIF válido')),
+                );
+                return;
+              }
+              if (listaCifs.contains(cifEditado) && cifEditado != listaCifs[index]) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('El CIF ya está en la lista')),
+                );
+                return;
+              }
+              setState(() => vaIsLoading = true);
+              final existe = await validarCifEnServidor(cifEditado);
+              if (!existe) {
+                setState(() => vaIsLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('El CIF no existe en la base de datos')),
+                );
+                return;
+              }
+              setState(() {
+                listaCifs[index] = cifEditado;
+              });
+              await _guardarListaCifs();
+              setState(() => vaIsLoading = false);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('✅ CIF actualizado a $cifEditado')),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -189,95 +230,126 @@ class _VCifScreenState extends State<VCifScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const Text('Gestionar CIFs'),
-        // Eliminado botón de acción en el AppBar
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/images/iconotrivalle.png',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: txtNuevoCifController,
-                      decoration: InputDecoration(
-                        labelText: 'Nuevo CIF',
-                        errorText: etiVCifError,
-                        errorStyle: const TextStyle(color: Color(0xFFD32F2F)),
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _anadirNuevoCif(),
-                      textCapitalization: TextCapitalization.none,
-                    ),
-                    const SizedBox(height: 12),
-                    vaIsLoading
-                        ? const CircularProgressIndicator()
-                        : ElevatedButton(
-                            onPressed: _anadirNuevoCif,
-                            child: const Text('Añadir CIF'),
-                            style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(40)),
-                          ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      height: 300,
-                      child: listaCifs.isEmpty
-                          ? const Center(child: Text('No hay CIFs añadidos.'))
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: listaCifs.length,
-                              itemBuilder: (context, index) {
-                                final cif = listaCifs[index];
-                                return Card(
-                                  child: ListTile(
-                                    title: Text(cif),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue),
-                                          onPressed: () => _editarCif(index),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          onPressed: () => _borrarCif(index),
-                                        ),
-                                      ],
-                                    ),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // 🔹 Cierra teclado al pulsar fuera
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Gestionar CIFs'),
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        Image.asset('assets/images/iconotrivalle.png', width: 100, height: 100),
+                        const SizedBox(height: 24),
+                        Card(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 3,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  controller: txtNuevoCifController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Introduce nuevo CIF',
+                                    prefixIcon: const Icon(Icons.business, color: Colors.blue),
+                                    errorText: etiVCifError,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
-                                );
-                              },
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) => _anadirNuevoCif(),
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: vaIsLoading ? null : _anadirNuevoCif,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    child: vaIsLoading
+                                        ? const SizedBox(
+                                            height: 18,
+                                            width: 18,
+                                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                          )
+                                        : const Text('Añadir CIF'),
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        listaCifs.isEmpty
+                            ? const Text('No hay CIFs añadidos.')
+                            : Column(
+                                children: listaCifs.asMap().entries.map((entry) {
+                                  int index = entry.key;
+                                  String cif = entry.value;
+                                  return Card(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    margin: const EdgeInsets.symmetric(vertical: 6),
+                                    child: ListTile(
+                                      leading: const Icon(Icons.business, color: Colors.blue),
+                                      title: Text(cif, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit, color: Colors.orange),
+                                            onPressed: () => _editarCif(index),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete, color: Colors.red),
+                                            onPressed: () => _borrarCif(index),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _irALogin,
-                child: const Text('Continuar al Login'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).padding.bottom + 16,
+                      top: 10,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _irALogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Continuar al Login'),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
