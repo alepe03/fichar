@@ -231,67 +231,39 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           child: StatefulBuilder(builder: (ctx2, setStateDialog) {
             return AlertDialog(
-              backgroundColor: Colors.white,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text("Cambiar contraseña"),
+              backgroundColor: const Color(0xFFEAEAEA), // Fondo gris claro
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text(
+                "Cambiar contraseña",
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+              ),
               content: Form(
                 key: _formKeyDialog,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextFormField(
+                    _buildPasswordField(
                       controller: currentPassCtrl,
-                      obscureText: ob1,
-                      cursorColor: Colors.blue,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        labelText: "Contraseña actual",
-                        prefixIcon: const Icon(Icons.lock_outline, color: Colors.blue),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(ob1 ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setStateDialog(() => ob1 = !ob1),
-                        ),
-                      ),
-                      validator: (v) => v == null || v.isEmpty ? "Obligatorio" : null,
+                      label: "Contraseña actual",
+                      icon: Icons.lock_outline,
+                      obscure: ob1,
+                      onToggle: () => setStateDialog(() => ob1 = !ob1),
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
+                    const SizedBox(height: 16),
+                    _buildPasswordField(
                       controller: newPassCtrl,
-                      obscureText: ob2,
-                      cursorColor: Colors.blue,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        labelText: "Nueva contraseña",
-                        prefixIcon: const Icon(Icons.lock, color: Colors.blue),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(ob2 ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setStateDialog(() => ob2 = !ob2),
-                        ),
-                      ),
-                      validator: (v) =>
-                          v == null || v.length < 6 ? "Mínimo 6 caracteres" : null,
+                      label: "Nueva contraseña",
+                      icon: Icons.lock,
+                      obscure: ob2,
+                      onToggle: () => setStateDialog(() => ob2 = !ob2),
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
+                    const SizedBox(height: 16),
+                    _buildPasswordField(
                       controller: confirmPassCtrl,
-                      obscureText: ob3,
-                      cursorColor: Colors.blue,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        labelText: "Confirmar nueva contraseña",
-                        prefixIcon: const Icon(Icons.lock, color: Colors.blue),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(ob3 ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setStateDialog(() => ob3 = !ob3),
-                        ),
-                      ),
+                      label: "Confirmar nueva contraseña",
+                      icon: Icons.lock,
+                      obscure: ob3,
+                      onToggle: () => setStateDialog(() => ob3 = !ob3),
                       validator: (v) =>
                           v != newPassCtrl.text ? "No coinciden" : null,
                     ),
@@ -305,7 +277,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Text("Cancelar", style: TextStyle(color: Colors.blue)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  ),
                   onPressed: loading
                       ? null
                       : () async {
@@ -347,6 +322,39 @@ class _LoginScreenState extends State<LoginScreen> {
           }),
         );
       },
+    );
+  }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required bool obscure,
+    required VoidCallback onToggle,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      cursorColor: Colors.blue,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white, // Campos blancos para contraste
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.blue),
+        prefixIcon: Icon(icon, color: Colors.blue),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.blue, width: 2),
+        ),
+        suffixIcon: IconButton(
+          icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+          onPressed: onToggle,
+        ),
+      ),
+      validator: validator ??
+          (v) => v == null || v.isEmpty ? "Campo obligatorio" : null,
     );
   }
 
@@ -410,7 +418,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // ✅ Dropdown actualizado
                       if (listaCifs.isEmpty)
                         const Text(
                           'No hay CIFs disponibles. Ve a la pantalla anterior para añadirlos.',
@@ -438,7 +445,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             value: cifSeleccionado,
                             iconEnabledColor: Colors.blue,
-                            dropdownColor: Colors.white,
+                            dropdownColor: Color(0xFFEAEAEA),
                             items: listaCifs
                                 .map((c) => DropdownMenuItem(
                                       value: c,
@@ -453,7 +460,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
 
                       const SizedBox(height: 20),
-                      // Usuario
                       TextFormField(
                         controller: txtVLoginUsuario,
                         decoration: const InputDecoration(
@@ -466,9 +472,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             : null,
                         enabled: !vaIsLoading,
                       ),
-
                       const SizedBox(height: 20),
-                      // Contraseña
                       TextFormField(
                         controller: txtVLoginPassword,
                         obscureText: vaObscurePassword,
@@ -491,7 +495,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             v == null || v.isEmpty ? "Introduce la contraseña" : null,
                         enabled: !vaIsLoading,
                       ),
-
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -505,7 +508,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           const Text("Recordar usuario"),
                         ],
                       ),
-
                       if (vaErrorMessage != null) ...[
                         const SizedBox(height: 16),
                         Text(
@@ -514,7 +516,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.red, fontWeight: FontWeight.bold),
                         ),
                       ],
-
                       const SizedBox(height: 32),
                       SizedBox(
                         width: double.infinity,
@@ -542,7 +543,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               : const Text('Entrar'),
                         ),
                       ),
-
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: () => _mostrarDialogoCambiarPassword(context),

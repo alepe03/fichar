@@ -121,7 +121,7 @@ class _VCifScreenState extends State<VCifScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xFFEAEAEA),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Eliminar CIF', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Text('¿Seguro que quieres eliminar ${listaCifs[index]}?',
@@ -159,7 +159,7 @@ class _VCifScreenState extends State<VCifScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xFFEAEAEA),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Modificar CIF', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(

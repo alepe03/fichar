@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import '../config.dart';
 import '../models/historico.dart';
 import '../models/incidencia.dart';
+import '../models/horario_empleado.dart';
+import '../services/horarios_service.dart';
 import '../services/historico_service.dart';
 import '../services/incidencia_service.dart';
 
@@ -78,10 +80,23 @@ class _FicharScreenState extends State<FicharScreen> {
   bool cargandoIncidencias = false;
   String? errorIncidencias;
 
+  // NUEVO: Lista de horarios hoy para el usuario
+  List<HorarioEmpleado> _tramosHoy = [];
+  bool _cargandoHorarios = true;
+
+  // --- CLAVES PERSONALIZADAS POR USUARIO Y EMPRESA ---
+  String _keyUltimaAccion(String usuario, String cifEmpresa) =>
+      'ultimo_tipo_fichaje_${usuario}_$cifEmpresa';
+
+  String _keyHoraEntrada(String usuario, String cifEmpresa) =>
+      'hora_entrada_${usuario}_$cifEmpresa';
+
   @override
   void initState() {
     super.initState();
-    _loadConfig();
+    _loadConfig().then((_) {
+      _cargarHorariosDeHoy();
+    });
   }
 
   Future<void> _loadConfig() async {
@@ -93,16 +108,45 @@ class _FicharScreenState extends State<FicharScreen> {
     nombreEmpleado = prefs.getString('nombre_empleado') ?? '';
     dniEmpleado = prefs.getString('dni_empleado') ?? '';
     idSucursal = prefs.getString('id_sucursal') ?? '';
-    vaUltimaAccion = prefs.getString('ultimo_tipo_fichaje') ?? '';
-    final horaEntradaStr = prefs.getString('hora_entrada');
+    // --- CLAVE PERSONALIZADA ---
+    vaUltimaAccion = prefs.getString(_keyUltimaAccion(usuario, cifEmpresa)) ?? '';
+    final horaEntradaStr = prefs.getString(_keyHoraEntrada(usuario, cifEmpresa));
     puedeLocalizar = prefs.getInt('puede_localizar') ?? 0;
 
     if (horaEntradaStr != null && horaEntradaStr.isNotEmpty) {
       _horaEntrada = DateTime.tryParse(horaEntradaStr);
+    } else {
+      _horaEntrada = null;
     }
 
     _calcularEstadoBotones();
     _initTemporizador();
+  }
+
+  // --- NUEVO: Cargar horarios del usuario para hoy ---
+  Future<void> _cargarHorariosDeHoy() async {
+    setState(() {
+      _cargandoHorarios = true;
+    });
+    try {
+      final todosHorarios = await HorariosService.obtenerHorariosLocalPorEmpleado(
+        dniEmpleado: dniEmpleado,
+        cifEmpresa: cifEmpresa,
+      );
+      final hoy = DateTime.now();
+      final diaSemana = (hoy.weekday - 1) % 7; // Lunes=0, ..., Domingo=6
+
+      setState(() {
+        _tramosHoy = todosHorarios.where((h) => h.diaSemana == diaSemana).toList();
+        _cargandoHorarios = false;
+      });
+    } catch (e) {
+      print('Error cargando horarios de hoy: $e');
+      setState(() {
+        _tramosHoy = [];
+        _cargandoHorarios = false;
+      });
+    }
   }
 
   void _calcularEstadoBotones() {
@@ -136,15 +180,16 @@ class _FicharScreenState extends State<FicharScreen> {
   Future<void> _setUltimaAccion(String tipo, {DateTime? horaEntrada}) async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setString('ultimo_tipo_fichaje', tipo);
+    // --- CLAVE PERSONALIZADA ---
+    await prefs.setString(_keyUltimaAccion(usuario, cifEmpresa), tipo);
 
     if (tipo == 'Entrada' && horaEntrada != null) {
-      await prefs.setString('hora_entrada', horaEntrada.toIso8601String());
+      await prefs.setString(_keyHoraEntrada(usuario, cifEmpresa), horaEntrada.toIso8601String());
       _horaEntrada = horaEntrada;
     }
 
     if (tipo == 'Salida' || (tipo.startsWith('Incidencia') && tipo != 'IncidenciaSolo')) {
-      await prefs.remove('hora_entrada');
+      await prefs.remove(_keyHoraEntrada(usuario, cifEmpresa));
       _horaEntrada = null;
     }
 
@@ -248,6 +293,37 @@ class _FicharScreenState extends State<FicharScreen> {
         _salidaEnProceso = false;
       });
     });
+  }
+
+  // --- NUEVO: Función que indica si puede fichar entrada AHORA ---
+  bool puedeFicharAhora() {
+  if (_cargandoHorarios) return false; // Mientras carga, bloquea
+
+  if (_tramosHoy.isEmpty) {
+    // Sin horarios asignados: habilita siempre (control desactivado)
+    return true;
+  }
+
+  final ahora = TimeOfDay.now();
+
+  for (final tramo in _tramosHoy) {
+    final inicio = _parseTime(tramo.horaInicio);
+    final fin = _parseTime(tramo.horaFin);
+
+    final minutosInicio = inicio.hour * 60 + inicio.minute - 10; // 10 min antes
+    final minutosFin = fin.hour * 60 + fin.minute;
+    final minutosAhora = ahora.hour * 60 + ahora.minute;
+
+    if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
+      return true;
+    }
+  }
+  return false;
+}
+
+  TimeOfDay _parseTime(String timeStr) {
+    final parts = timeStr.split(':');
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
   }
 
   Future<void> _cargarIncidencias() async {
@@ -494,7 +570,7 @@ class _FicharScreenState extends State<FicharScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.work, size: 54, color: Colors.blue),
+              const Icon(Icons.work_history, size: 54, color: Colors.blue),
               const SizedBox(height: 10),
               const Text('¿Qué quieres hacer?',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
@@ -507,7 +583,7 @@ class _FicharScreenState extends State<FicharScreen> {
                   icon: const Icon(Icons.login),
                   label: const Text('Fichar entrada'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: (entradaHabilitada && !_entradaEnProceso) ? _onEntrada : null,
+                  onPressed: (entradaHabilitada && !_entradaEnProceso && puedeFicharAhora()) ? _onEntrada : null,
                 ),
               ),
               const SizedBox(height: 18),

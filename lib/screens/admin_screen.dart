@@ -12,6 +12,7 @@ import '../models/empleado.dart';
 import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../providers/admin_provider.dart';
+import '../models/horario_empleado.dart';
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
@@ -30,17 +31,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this); // 4 tabs ahora
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       setState(() => _isLoading = true);
       final provider = Provider.of<AdminProvider>(context, listen: false);
-      print('[AdminScreen] Iniciando sincronización completa...');
-      await provider.sincronizarHistoricoCompleto();
-      print('[AdminScreen] Sincronización completa finalizada.');
-      await provider.cargarEmpleados();
-      await provider.cargarHistoricos();
-      print('[AdminScreen] Históricos cargados: ${provider.historicos.length}');
-      await provider.cargarIncidencias();
+      await provider.cargarDatosIniciales(); // carga empleados, historicos, incidencias
+      // Si quieres cargar horarios globales o por empleado, lo haces aquí también o en el tab
       setState(() => _isLoading = false);
     });
   }
@@ -50,10 +46,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          'Panel de Administración',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Panel de Administración', style: TextStyle(color: Colors.white)),
         centerTitle: true,
         elevation: 3,
         backgroundColor: kPrimaryBlue,
@@ -66,6 +59,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Tab(text: 'Usuarios'),
             Tab(text: 'Fichajes'),
             Tab(text: 'Incidencias'),
+            Tab(text: 'Horarios'), // nuevo tab
           ],
         ),
       ),
@@ -77,6 +71,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 UsuariosTab(),
                 FichajesTab(),
                 IncidenciasTab(),
+                HorariosTab(), // nuevo tab view
               ],
             ),
     );
@@ -1291,6 +1286,552 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class HorariosTab extends StatefulWidget {
+  const HorariosTab({Key? key}) : super(key: key);
+
+  @override
+  State<HorariosTab> createState() => _HorariosTabState();
+}
+
+class _HorariosTabState extends State<HorariosTab> {
+  String? _dniEmpleadoSeleccionado;
+
+  final List<String> _diasSemana = [
+    'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<AdminProvider>(context, listen: false);
+      provider.cargarHorariosEmpresa(provider.cifEmpresa);
+    });
+  }
+
+  void _abrirDialogoFormulario({HorarioEmpleado? horario}) {
+    final provider = Provider.of<AdminProvider>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: _FormularioHorario(
+            cifEmpresa: provider.cifEmpresa,
+            empleados: provider.empleados,
+            horarioExistente: horario,
+            onSubmit: (nuevoHorario) async {
+              String? error;
+              if (horario == null) {
+                error = await provider.addHorarioEmpleado(nuevoHorario);
+              } else {
+                error = await provider.updateHorarioEmpleado(nuevoHorario);
+              }
+              if (context.mounted) Navigator.pop(context);
+              if (error != null && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AdminProvider>(
+      builder: (context, provider, _) {
+        List<HorarioEmpleado> horariosFiltrados = _dniEmpleadoSeleccionado == null
+            ? provider.horarios
+            : provider.horarios.where((h) => h.dniEmpleado == _dniEmpleadoSeleccionado).toList();
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: DropdownButton<String?>(
+                isExpanded: true,
+                hint: const Text('Filtrar por empleado'),
+                value: _dniEmpleadoSeleccionado,
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Todos los empleados'),
+                  ),
+                  ...provider.empleados.map(
+                    (e) => DropdownMenuItem<String?>(
+                      value: e.dni,
+                      child: Text(e.nombre ?? e.usuario),
+                    ),
+                  ),
+                ],
+                onChanged: (val) async {
+                  setState(() => _dniEmpleadoSeleccionado = val);
+                  if (val != null) {
+                    await provider.cargarHorariosEmpleado(val);
+                  } else {
+                    await provider.cargarHorariosEmpresa(provider.cifEmpresa);
+                  }
+                },
+              ),
+            ),
+            Expanded(
+              child: horariosFiltrados.isEmpty
+                  ? const Center(child: Text('No hay horarios disponibles'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      separatorBuilder: (_, __) => const Divider(height: 12),
+                      itemCount: horariosFiltrados.length,
+                      itemBuilder: (context, index) {
+                        final horario = horariosFiltrados[index];
+                        final empleado = provider.empleados.firstWhere(
+                          (e) => e.dni == horario.dniEmpleado,
+                          orElse: () => Empleado(
+                            usuario: '',
+                            dni: horario.dniEmpleado,
+                            nombre: '',
+                            cifEmpresa: horario.cifEmpresa,
+                          ),
+                        );
+                        final nombreEmpleado = (empleado.nombre?.isNotEmpty ?? false)
+                            ? empleado.nombre
+                            : empleado.usuario;
+
+                        return Card(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 3,
+                          color: const Color(0xFFF7F0FA),
+                          child: ListTile(
+                            title: Text(
+                              '${_diasSemana[horario.diaSemana]}: ${horario.horaInicio} - ${horario.horaFin}'
+                              '${horario.nombreTurno != null && horario.nombreTurno!.isNotEmpty ? ' (${horario.nombreTurno})' : ''}',
+                            ),
+                            subtitle: Text(
+                              'Empleado: $nombreEmpleado (${horario.dniEmpleado})',
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () => _abrirDialogoFormulario(horario: horario),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Confirmar borrado'),
+                                        content: Text(
+                                          '¿Eliminar horario del día ${_diasSemana[horario.diaSemana]} para empleado con DNI ${horario.dniEmpleado}?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancelar'),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: const Text('Eliminar'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      final error = await provider.deleteHorarioEmpleado(horario.id!, horario.dniEmpleado);
+                                      if (error != null && context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 16, bottom: 16),
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: FloatingActionButton.extended(
+                  icon: const Icon(Icons.schedule, color: Colors.white),
+                  label: const Text(
+                    'Añadir horario',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onPressed: () => _abrirDialogoFormulario(),
+                  backgroundColor: Colors.blue,
+                  elevation: 6,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FormularioHorario extends StatefulWidget {
+  final String cifEmpresa;
+  final List<Empleado> empleados;
+  final HorarioEmpleado? horarioExistente;
+  final void Function(HorarioEmpleado horario) onSubmit;
+
+  const _FormularioHorario({
+    Key? key,
+    required this.cifEmpresa,
+    required this.empleados,
+    this.horarioExistente,
+    required this.onSubmit,
+  }) : super(key: key);
+
+  @override
+  State<_FormularioHorario> createState() => _FormularioHorarioState();
+}
+
+class _FormularioHorarioState extends State<_FormularioHorario> {
+  final _formKey = GlobalKey<FormState>();
+
+  int _diaSemana = 0;
+  TimeOfDay? _horaInicio;
+  TimeOfDay? _horaFin;
+  TextEditingController _nombreTurnoCtrl = TextEditingController();
+  String? _dniEmpleadoSeleccionado;
+
+  final List<String> _diasSemana = [
+    'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.horarioExistente != null) {
+      _diaSemana = widget.horarioExistente!.diaSemana;
+      _horaInicio = _parseTime(widget.horarioExistente!.horaInicio);
+      _horaFin = _parseTime(widget.horarioExistente!.horaFin);
+      _nombreTurnoCtrl.text = widget.horarioExistente?.nombreTurno ?? '';
+      _dniEmpleadoSeleccionado = widget.horarioExistente!.dniEmpleado;
+    }
+  }
+
+  TimeOfDay _parseTime(String timeStr) {
+    final parts = timeStr.split(':');
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  }
+
+  String _formatTime(TimeOfDay? tod) {
+    if (tod == null) return '';
+    final h = tod.hour.toString().padLeft(2, '0');
+    final m = tod.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  Future<void> _pickHoraPersonalizada({required bool isInicio}) async {
+    final initial = isInicio ? _horaInicio ?? const TimeOfDay(hour: 12, minute: 0) : _horaFin ?? const TimeOfDay(hour: 12, minute: 0);
+
+    final result = await showModalBottomSheet<TimeOfDay>(
+      context: context,
+      builder: (context) {
+        return _TimePickerWheel(
+          initialHour: initial.hour,
+          initialMinute: initial.minute,
+        );
+      },
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+    );
+
+    if (result != null) {
+      setState(() {
+        if (isInicio) {
+          _horaInicio = result;
+        } else {
+          _horaFin = result;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.horarioExistente != null;
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isEditing ? 'Editar horario' : 'Nuevo horario',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Empleado',
+                  border: OutlineInputBorder(),
+                ),
+                value: _dniEmpleadoSeleccionado,
+                items: widget.empleados
+                    .map(
+                      (empleado) => DropdownMenuItem<String>(
+                        value: empleado.dni,
+                        child: Text(empleado.nombre ?? empleado.usuario),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _dniEmpleadoSeleccionado = value),
+                validator: (value) => value == null ? 'Selecciona un empleado' : null,
+              ),
+              const SizedBox(height: 12),
+
+              DropdownButtonFormField<int>(
+                decoration: const InputDecoration(
+                  labelText: 'Día de la semana',
+                  border: OutlineInputBorder(),
+                ),
+                value: _diaSemana,
+                items: List.generate(
+                  7,
+                  (index) => DropdownMenuItem(
+                    value: index,
+                    child: Text(_diasSemana[index]),
+                  ),
+                ),
+                onChanged: (v) => setState(() => _diaSemana = v ?? 0),
+              ),
+              const SizedBox(height: 12),
+
+              InkWell(
+                onTap: () => _pickHoraPersonalizada(isInicio: true),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Hora inicio',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
+                  ),
+                  child: Text(_horaInicio != null ? _formatTime(_horaInicio) : 'Seleccionar hora'),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              InkWell(
+                onTap: () => _pickHoraPersonalizada(isInicio: false),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Hora fin',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
+                  ),
+                  child: Text(_horaFin != null ? _formatTime(_horaFin) : 'Seleccionar hora'),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _nombreTurnoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre turno (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (!_formKey.currentState!.validate()) return;
+                    if (_horaInicio == null || _horaFin == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Selecciona hora inicio y hora fin')),
+                      );
+                      return;
+                    }
+                    final inicioMinutos = _horaInicio!.hour * 60 + _horaInicio!.minute;
+                    final finMinutos = _horaFin!.hour * 60 + _horaFin!.minute;
+                    if (inicioMinutos >= finMinutos) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('La hora de inicio debe ser anterior a la de fin')),
+                      );
+                      return;
+                    }
+                    final nuevoHorario = HorarioEmpleado(
+                      id: widget.horarioExistente?.id,
+                      dniEmpleado: _dniEmpleadoSeleccionado!,
+                      cifEmpresa: widget.cifEmpresa,
+                      diaSemana: _diaSemana,
+                      horaInicio: _formatTime(_horaInicio),
+                      horaFin: _formatTime(_horaFin),
+                      nombreTurno: _nombreTurnoCtrl.text.trim(),
+                    );
+                    widget.onSubmit(nuevoHorario);
+                  },
+                  child: Text(isEditing ? 'Guardar cambios' : 'Crear horario'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimePickerWheel extends StatefulWidget {
+  final int initialHour;
+  final int initialMinute;
+
+  const _TimePickerWheel({
+    Key? key,
+    required this.initialHour,
+    required this.initialMinute,
+  }) : super(key: key);
+
+  @override
+  State<_TimePickerWheel> createState() => _TimePickerWheelState();
+}
+
+class _TimePickerWheelState extends State<_TimePickerWheel> {
+  late FixedExtentScrollController _hourController;
+  late FixedExtentScrollController _minuteController;
+
+  late int _selectedHour;
+  late int _selectedMinute;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedHour = widget.initialHour;
+    _selectedMinute = widget.initialMinute;
+    _hourController = FixedExtentScrollController(initialItem: _selectedHour);
+    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute);
+  }
+
+  @override
+  void dispose() {
+    _hourController.dispose();
+    _minuteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double wheelDiameter = 150;
+    const TextStyle textStyle = TextStyle(fontSize: 32);
+
+    return Container(
+      padding: const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -3)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Selecciona la hora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: wheelDiameter,
+                height: wheelDiameter,
+                child: ListWheelScrollView.useDelegate(
+                  controller: _hourController,
+                  itemExtent: 50,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (index) {
+                    setState(() => _selectedHour = index);
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    builder: (context, index) {
+                      if (index < 0 || index > 23) return null;
+                      final selected = index == _selectedHour;
+                      return Center(
+                        child: Text(
+                          index.toString().padLeft(2, '0'),
+                          style: selected
+                              ? textStyle.copyWith(color: Colors.black)
+                              : textStyle.copyWith(color: Colors.grey),
+                        ),
+                      );
+                    },
+                    childCount: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 20),
+              const Text(':', style: TextStyle(fontSize: 32)),
+              const SizedBox(width: 20),
+              SizedBox(
+                width: wheelDiameter,
+                height: wheelDiameter,
+                child: ListWheelScrollView.useDelegate(
+                  controller: _minuteController,
+                  itemExtent: 50,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (index) {
+                    setState(() => _selectedMinute = index);
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    builder: (context, index) {
+                      if (index < 0 || index > 59) return null;
+                      final selected = index == _selectedMinute;
+                      return Center(
+                        child: Text(
+                          index.toString().padLeft(2, '0'),
+                          style: selected
+                              ? textStyle.copyWith(color: Colors.black)
+                              : textStyle.copyWith(color: Colors.grey),
+                        ),
+                      );
+                    },
+                    childCount: 60,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
