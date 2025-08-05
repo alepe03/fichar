@@ -1,12 +1,15 @@
-class HorarioEmpleado {
-  final int? id;
-  final String dniEmpleado;
-  final String cifEmpresa;
-  final int diaSemana; // 0 = Lunes, ..., 6 = Domingo
-  final String horaInicio; // Formato 'HH:mm'
-  final String horaFin;    // Formato 'HH:mm'
-  final String? nombreTurno; // Opcional
+// Modelo de datos para el horario de un empleado
 
+class HorarioEmpleado {
+  final int? id;                // ID único en la base de datos (autoincremental, opcional)
+  final String dniEmpleado;     // DNI del empleado al que pertenece el horario
+  final String cifEmpresa;      // CIF de la empresa
+  final int diaSemana;          // Día de la semana (0 = Lunes, ..., 6 = Domingo)
+  final String horaInicio;      // Hora de inicio del turno (formato 'HH:mm')
+  final String horaFin;         // Hora de fin del turno (formato 'HH:mm')
+  final String? nombreTurno;    // Nombre del turno (opcional, por ejemplo "Mañana")
+
+  /// Constructor principal
   HorarioEmpleado({
     this.id,
     required this.dniEmpleado,
@@ -17,7 +20,7 @@ class HorarioEmpleado {
     this.nombreTurno,
   });
 
-  // Desde un Map (SQLite/API)
+  /// Crea un HorarioEmpleado a partir de un Map (por ejemplo, desde SQLite o una API)
   factory HorarioEmpleado.fromMap(Map<String, dynamic> map) {
     return HorarioEmpleado(
       id: map['id'] is int ? map['id'] : int.tryParse('${map['id']}'),
@@ -30,7 +33,7 @@ class HorarioEmpleado {
     );
   }
 
-  // Desde una línea CSV
+  /// Crea un HorarioEmpleado a partir de una línea CSV separada por ';'
   factory HorarioEmpleado.fromCsv(String line) {
     final fields = line.split(';');
     return HorarioEmpleado(
@@ -44,6 +47,7 @@ class HorarioEmpleado {
     );
   }
 
+  /// Convierte el objeto a un Map para guardar en la base de datos o enviar por red
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -56,6 +60,7 @@ class HorarioEmpleado {
     };
   }
 
+  /// Representación legible del objeto (útil para debug)
   @override
   String toString() {
     return 'HorarioEmpleado{id: $id, dni: $dniEmpleado, empresa: $cifEmpresa, '

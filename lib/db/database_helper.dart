@@ -5,18 +5,21 @@ import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../models/horario_empleado.dart';
 
+/// Clase singleton para gestionar el acceso a la base de datos local SQLite
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
   DatabaseHelper._init();
 
+  /// Getter para obtener la instancia de la base de datos, la inicializa si es necesario
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('fichador.db');
     return _database!;
   }
 
+  /// Inicializa la base de datos, eligiendo la ruta según si es web o no
   Future<Database> _initDB(String filePath) async {
     final dbPath = kIsWeb ? filePath : join(await getDatabasesPath(), filePath);
 
@@ -33,9 +36,11 @@ class DatabaseHelper {
     return db;
   }
 
+  /// Crea las tablas necesarias en la base de datos si no existen
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
 
+    // Tabla de empleados
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
         usuario TEXT NOT NULL,
@@ -55,6 +60,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Tabla de empresas
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empresas (
         cif_empresa TEXT PRIMARY KEY,
@@ -67,6 +73,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Tabla de sucursales
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sucursales (
         cif_empresa TEXT NOT NULL,
@@ -78,6 +85,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Tabla de incidencias (se borra y recrea por si hay cambios)
     await db.execute('DROP TABLE IF EXISTS incidencias;');
     await db.execute('''
       CREATE TABLE incidencias (
@@ -88,6 +96,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Tabla de registros históricos de fichajes
     await db.execute('''
       CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,7 +116,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // NUEVA TABLA: Horarios de empleados
+    // Tabla de horarios de empleados
     await db.execute('''
       CREATE TABLE IF NOT EXISTS horarios_empleado (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +132,7 @@ class DatabaseHelper {
     print('[DEBUG][DatabaseHelper] Tablas creadas (si no existían).');
   }
 
+  /// Gestiona las migraciones de la base de datos entre versiones
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE historico ADD COLUMN latitud REAL');
@@ -153,11 +163,13 @@ class DatabaseHelper {
   }
 
   // ==================== HISTORICO ======================
+  /// Inserta un registro en la tabla historico
   Future<int> insertHistorico(Historico h) async {
     final db = await database;
     return await db.insert('historico', h.toDbMap());
   }
 
+  /// Actualiza el estado de sincronización de un registro histórico
   Future<int> actualizarSincronizado(int id, bool sincronizado) async {
     final db = await database;
     return db.update(
@@ -168,18 +180,21 @@ class DatabaseHelper {
     );
   }
 
+  /// Devuelve la lista de registros históricos pendientes de sincronizar
   Future<List<Historico>> historicosPendientes() async {
     final db = await database;
     final maps = await db.query('historico', where: 'sincronizado = 0');
     return maps.map((m) => Historico.fromMap(m)).toList();
   }
 
+  /// Borra todos los registros históricos de una empresa concreta
   Future<int> borrarHistoricosPorEmpresa(String cifEmpresa) async {
     final db = await database;
     return await db.delete('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
   }
 
   // ==================== INCIDENCIAS ======================
+  /// Carga las incidencias locales de una empresa concreta
   Future<List<Incidencia>> cargarIncidenciasLocal(String cifEmpresa) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -191,11 +206,13 @@ class DatabaseHelper {
   }
 
   // ==================== HORARIOS EMPLEADO ======================
+  /// Inserta un nuevo horario de empleado
   Future<int> insertarHorarioEmpleado(HorarioEmpleado h) async {
     final db = await database;
     return await db.insert('horarios_empleado', h.toMap());
   }
 
+  /// Carga los horarios de un empleado concreto en una empresa
   Future<List<HorarioEmpleado>> cargarHorariosEmpleado(String dniEmpleado, String cifEmpresa) async {
     final db = await database;
     final maps = await db.query(
@@ -206,6 +223,7 @@ class DatabaseHelper {
     return maps.map((m) => HorarioEmpleado.fromMap(m)).toList();
   }
 
+  /// Carga todos los horarios de una empresa
   Future<List<HorarioEmpleado>> cargarHorariosEmpresa(String cifEmpresa) async {
     final db = await database;
     final maps = await db.query(
@@ -216,6 +234,7 @@ class DatabaseHelper {
     return maps.map((m) => HorarioEmpleado.fromMap(m)).toList();
   }
 
+  /// Actualiza un horario de empleado existente
   Future<int> actualizarHorarioEmpleado(HorarioEmpleado h) async {
     final db = await database;
     return await db.update(
@@ -226,6 +245,7 @@ class DatabaseHelper {
     );
   }
 
+  /// Borra un horario de empleado por su ID
   Future<int> borrarHorarioEmpleado(int id) async {
     final db = await database;
     return await db.delete(

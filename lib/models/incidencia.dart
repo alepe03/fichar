@@ -1,17 +1,21 @@
+// Modelo de datos para una incidencia (motivo de fichaje especial, ausencia, etc.)
+
 class Incidencia {
-  final String codigo;
-  final String? descripcion;
-  final String? cifEmpresa;
+  final String codigo;           // Código único de la incidencia (ej: "IN001")
+  final String? descripcion;     // Descripción de la incidencia (opcional)
+  final String? cifEmpresa;      // CIF de la empresa asociada (opcional)
 
-  final bool computa; // NUEVO CAMPO
+  final bool computa; // Indica si la incidencia computa como jornada (true=cuenta, false=no)
 
+  /// Constructor principal
   Incidencia({
     required this.codigo,
     this.descripcion,
     this.cifEmpresa,
-    this.computa = true, // valor por defecto
+    this.computa = true, // valor por defecto: computa
   });
 
+  /// Crea una Incidencia a partir de un Map (por ejemplo, desde SQLite o una API)
   factory Incidencia.fromMap(Map<String, Object?> map) {
     return Incidencia(
       codigo: map['codigo']?.toString() ?? '',
@@ -25,6 +29,7 @@ class Incidencia {
     );
   }
 
+  /// Crea una Incidencia a partir de una línea CSV separada por ';'
   factory Incidencia.fromCsv(String line) {
     final parts = line.split(';');
     return Incidencia(
@@ -35,15 +40,17 @@ class Incidencia {
     );
   }
 
+  /// Convierte la incidencia a un Map para guardar en la base de datos o enviar por red
   Map<String, dynamic> toMap() {
     return {
       'codigo': codigo,
       'descripcion': descripcion,
       'cif_empresa': cifEmpresa,
-      'computa': computa ? 1 : 0, // guardar como int
+      'computa': computa ? 1 : 0, // guardar como int (1/0)
     };
   }
 
+  /// Representación legible del objeto (útil para debug)
   @override
   String toString() => 'Incidencia($codigo, $descripcion, $cifEmpresa, computa=$computa)';
 }

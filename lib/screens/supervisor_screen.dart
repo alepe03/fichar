@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/admin_provider.dart';
 import '../screens/admin_screen.dart';
-import '../screens/login_screen.dart'; // Importa para navegar
+import '../screens/login_screen.dart'; 
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 

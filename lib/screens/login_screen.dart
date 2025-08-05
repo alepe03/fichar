@@ -13,6 +13,8 @@ import 'vcif_screen.dart';
 import '../providers/admin_provider.dart';
 import '../models/empleado.dart';
 import 'trivalle_screen.dart';
+import '../db/database_helper.dart';
+import '../services/empleado_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -108,6 +110,19 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. Sincronizar empleados antes del login local para datos frescos
+    try {
+      await EmpleadoService.sincronizarEmpleadosCompleto(
+        prefs.getString('token') ?? '123456.abcd', // Cambia por token válido si tienes
+        prefs.getString('baseUrl') ?? BASE_URL,
+        cifSeleccionado!,
+      );
+    } catch (e) {
+      print('Error sincronizando empleados completos antes de login: $e');
+    }
+
+    // 2. Validar login local con datos actualizados
     final empleadoLocal = await AuthService.loginLocal(
       txtVLoginUsuario.text.trim(),
       txtVLoginPassword.text,
@@ -122,6 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // 3. (Opcional) Obtener usuario remoto para datos frescos puntuales
     Empleado? empleadoActualizado;
     try {
       empleadoActualizado = await obtenerUsuarioRemoto(
@@ -130,6 +146,17 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       empleadoActualizado = null;
+    }
+
+    final db = await DatabaseHelper.instance.database;
+
+    if (empleadoActualizado != null) {
+      await db.update(
+        'empleados',
+        empleadoActualizado.toMap(),
+        where: 'usuario = ? AND cif_empresa = ?',
+        whereArgs: [empleadoActualizado.usuario, empleadoActualizado.cifEmpresa],
+      );
     }
 
     final usuarioFinal = empleadoActualizado ?? empleadoLocal;
@@ -155,13 +182,19 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('nombre_empleado', usuarioFinal.nombre ?? '');
     await prefs.setString('dni_empleado', usuarioFinal.dni ?? '');
     await prefs.setString('id_sucursal', '');
-    await prefs.setString('token', '123456.abcd');
+    await prefs.setString('token', '123456.abcd'); // Ajusta según tu gestión real de tokens
     await prefs.setString('baseUrl', BASE_URL);
     await prefs.setInt('puede_localizar', usuarioFinal.puedeLocalizar);
     await prefs.setString('rol', usuarioFinal.rol ?? '');
 
     if (!mounted) return;
 
+    await _navegarSegunRol(usuarioFinal);
+
+    setState(() => vaIsLoading = false);
+  }
+
+  Future<void> _navegarSegunRol(Empleado usuarioFinal) async {
     final rol = usuarioFinal.rol?.toLowerCase() ?? '';
 
     if (rol == 'trivalle') {
@@ -172,6 +205,10 @@ class _LoginScreenState extends State<LoginScreen> {
     } else if (rol == 'admin') {
       final adminProvider = AdminProvider(usuarioFinal.cifEmpresa);
       await adminProvider.cargarDatosIniciales();
+
+      // Carga explícita de horarios tras datos iniciales
+      await adminProvider.cargarHorariosEmpresa(usuarioFinal.cifEmpresa);
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -194,6 +231,10 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       final adminProvider = AdminProvider(usuarioFinal.cifEmpresa);
       await adminProvider.cargarDatosIniciales();
+
+      // Carga explícita de horarios tras datos iniciales
+      await adminProvider.cargarHorariosEmpresa(usuarioFinal.cifEmpresa);
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -207,7 +248,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
-    setState(() => vaIsLoading = false);
   }
 
   void _mostrarDialogoCambiarPassword(BuildContext context) {
@@ -445,7 +485,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             value: cifSeleccionado,
                             iconEnabledColor: Colors.blue,
-                            dropdownColor: Color(0xFFEAEAEA),
+                            dropdownColor: const Color(0xFFEAEAEA),
                             items: listaCifs
                                 .map((c) => DropdownMenuItem(
                                       value: c,

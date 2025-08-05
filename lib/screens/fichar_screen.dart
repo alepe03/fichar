@@ -62,6 +62,8 @@ class _FicharScreenState extends State<FicharScreen> {
   bool _entradaEnProceso = false;
   bool _salidaEnProceso = false;
 
+  bool _loading = false; // <--- Controla overlay de carga general
+
   late String cifEmpresa;
   late String token;
   late String usuario;
@@ -80,11 +82,9 @@ class _FicharScreenState extends State<FicharScreen> {
   bool cargandoIncidencias = false;
   String? errorIncidencias;
 
-  // NUEVO: Lista de horarios hoy para el usuario
   List<HorarioEmpleado> _tramosHoy = [];
   bool _cargandoHorarios = true;
 
-  // --- CLAVES PERSONALIZADAS POR USUARIO Y EMPRESA ---
   String _keyUltimaAccion(String usuario, String cifEmpresa) =>
       'ultimo_tipo_fichaje_${usuario}_$cifEmpresa';
 
@@ -108,7 +108,6 @@ class _FicharScreenState extends State<FicharScreen> {
     nombreEmpleado = prefs.getString('nombre_empleado') ?? '';
     dniEmpleado = prefs.getString('dni_empleado') ?? '';
     idSucursal = prefs.getString('id_sucursal') ?? '';
-    // --- CLAVE PERSONALIZADA ---
     vaUltimaAccion = prefs.getString(_keyUltimaAccion(usuario, cifEmpresa)) ?? '';
     final horaEntradaStr = prefs.getString(_keyHoraEntrada(usuario, cifEmpresa));
     puedeLocalizar = prefs.getInt('puede_localizar') ?? 0;
@@ -123,7 +122,6 @@ class _FicharScreenState extends State<FicharScreen> {
     _initTemporizador();
   }
 
-  // --- NUEVO: Cargar horarios del usuario para hoy ---
   Future<void> _cargarHorariosDeHoy() async {
     setState(() {
       _cargandoHorarios = true;
@@ -134,7 +132,7 @@ class _FicharScreenState extends State<FicharScreen> {
         cifEmpresa: cifEmpresa,
       );
       final hoy = DateTime.now();
-      final diaSemana = (hoy.weekday - 1) % 7; // Lunes=0, ..., Domingo=6
+      final diaSemana = (hoy.weekday - 1) % 7;
 
       setState(() {
         _tramosHoy = todosHorarios.where((h) => h.diaSemana == diaSemana).toList();
@@ -180,7 +178,6 @@ class _FicharScreenState extends State<FicharScreen> {
   Future<void> _setUltimaAccion(String tipo, {DateTime? horaEntrada}) async {
     final prefs = await SharedPreferences.getInstance();
 
-    // --- CLAVE PERSONALIZADA ---
     await prefs.setString(_keyUltimaAccion(usuario, cifEmpresa), tipo);
 
     if (tipo == 'Entrada' && horaEntrada != null) {
@@ -227,7 +224,7 @@ class _FicharScreenState extends State<FicharScreen> {
     if (puedeLocalizar == 1) {
       pos = await obtenerPosicion();
     } else {
-      pos = null; // No se recoge localización si no tiene permiso
+      pos = null;
     }
 
     final historico = Historico(
@@ -271,55 +268,55 @@ class _FicharScreenState extends State<FicharScreen> {
     }
   }
 
+  Future<void> _procesarFichajeConLoading(Future<void> Function() funcion) async {
+    if (_loading) return; // evitar dobles llamadas
+    setState(() => _loading = true);
+    try {
+      await funcion();
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
   void _onEntrada() {
     if (_entradaEnProceso) return;
-    setState(() {
-      _entradaEnProceso = true;
-    });
-    _registrarFichaje('Entrada').then((_) {
-      setState(() {
-        _entradaEnProceso = false;
-      });
+    _entradaEnProceso = true;
+    _procesarFichajeConLoading(() => _registrarFichaje('Entrada')).then((_) {
+      _entradaEnProceso = false;
     });
   }
 
   void _onSalida() {
     if (_salidaEnProceso) return;
-    setState(() {
-      _salidaEnProceso = true;
-    });
-    _registrarFichaje('Salida').then((_) {
-      setState(() {
-        _salidaEnProceso = false;
-      });
+    _salidaEnProceso = true;
+    _procesarFichajeConLoading(() => _registrarFichaje('Salida')).then((_) {
+      _salidaEnProceso = false;
     });
   }
 
-  // --- NUEVO: Función que indica si puede fichar entrada AHORA ---
   bool puedeFicharAhora() {
-  if (_cargandoHorarios) return false; // Mientras carga, bloquea
+    if (_cargandoHorarios) return false;
 
-  if (_tramosHoy.isEmpty) {
-    // Sin horarios asignados: habilita siempre (control desactivado)
-    return true;
-  }
-
-  final ahora = TimeOfDay.now();
-
-  for (final tramo in _tramosHoy) {
-    final inicio = _parseTime(tramo.horaInicio);
-    final fin = _parseTime(tramo.horaFin);
-
-    final minutosInicio = inicio.hour * 60 + inicio.minute - 10; // 10 min antes
-    final minutosFin = fin.hour * 60 + fin.minute;
-    final minutosAhora = ahora.hour * 60 + ahora.minute;
-
-    if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
+    if (_tramosHoy.isEmpty) {
       return true;
     }
+
+    final ahora = TimeOfDay.now();
+
+    for (final tramo in _tramosHoy) {
+      final inicio = _parseTime(tramo.horaInicio);
+      final fin = _parseTime(tramo.horaFin);
+
+      final minutosInicio = inicio.hour * 60 + inicio.minute - 10;
+      final minutosFin = fin.hour * 60 + fin.minute;
+      final minutosAhora = ahora.hour * 60 + ahora.minute;
+
+      if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
+        return true;
+      }
+    }
+    return false;
   }
-  return false;
-}
 
   TimeOfDay _parseTime(String timeStr) {
     final parts = timeStr.split(':');
@@ -349,6 +346,7 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   void _onIncidencia() async {
+    if (_loading) return; // bloquear mientras carga general
     await _cargarIncidencias();
     txtObservaciones.clear();
     Incidencia? seleccionada;
@@ -558,68 +556,85 @@ class _FicharScreenState extends State<FicharScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-          width: ancho > 400 ? 400 : ancho * 0.97,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [ BoxShadow(color: Colors.blue.withOpacity(0.07), blurRadius: 18, offset: const Offset(0, 7)) ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.work_history, size: 54, color: Colors.blue),
-              const SizedBox(height: 10),
-              const Text('¿Qué quieres hacer?',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
-              const SizedBox(height: 15),
-              _temporizadorWidget(),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.login),
-                  label: const Text('Fichar entrada'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: (entradaHabilitada && !_entradaEnProceso && puedeFicharAhora()) ? _onEntrada : null,
-                ),
+      body: Stack(
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+              width: ancho > 400 ? 400 : ancho * 0.97,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.07), blurRadius: 18, offset: const Offset(0, 7))],
               ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Fichar salida'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: (salidaHabilitada && !_salidaEnProceso) ? _onSalida : null,
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.warning_amber_rounded),
-                  label: const Text('Registrar incidencia'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.blue,
-                    side: const BorderSide(color: Colors.blue, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.work_history, size: 54, color: Colors.blue),
+                  const SizedBox(height: 10),
+                  const Text('¿Qué quieres hacer?',
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
+                  const SizedBox(height: 15),
+                  _temporizadorWidget(),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.login),
+                      label: const Text('Fichar entrada'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
+                      onPressed: (entradaHabilitada && !_entradaEnProceso && puedeFicharAhora() && !_loading)
+                          ? _onEntrada
+                          : null,
+                    ),
                   ),
-                  onPressed: _onIncidencia,
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Fichar salida'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
+                      onPressed: (salidaHabilitada && !_salidaEnProceso && !_loading) ? _onSalida : null,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.warning_amber_rounded),
+                      label: const Text('Registrar incidencia'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.blue,
+                        side: const BorderSide(color: Colors.blue, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      onPressed: !_loading ? _onIncidencia : null,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  if (vaUltimaAccion.isNotEmpty)
+                    Text(
+                      'Última acción: $vaUltimaAccion',
+                      style: const TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.blueGrey),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (_loading)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.blue,
                 ),
               ),
-              const SizedBox(height: 30),
-              if (vaUltimaAccion.isNotEmpty)
-                Text(
-                  'Última acción: $vaUltimaAccion',
-                  style: const TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.blueGrey),
-                ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }

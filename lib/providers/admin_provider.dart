@@ -12,37 +12,67 @@ import '../services/incidencia_service.dart';
 import '../services/historico_service.dart';
 import '../services/horarios_service.dart';
 
+/// Provider principal para la gestión de datos de la empresa y sincronización.
+/// Incluye empleados, históricos, incidencias y horarios.
+/// Todos los métodos que modifican datos sincronizan con el backend y la base local.
 class AdminProvider extends ChangeNotifier {
-  List<Empleado> empleados = [];
-  List<Historico> historicos = [];
-  List<Incidencia> incidencias = [];
-  List<HorarioEmpleado> horarios = [];
+  List<Empleado> empleados = [];         // Lista de empleados de la empresa
+  List<Historico> historicos = [];       // Lista de fichajes/históricos
+  List<Incidencia> incidencias = [];     // Lista de incidencias
+  List<HorarioEmpleado> horarios = [];   // Lista de horarios de empleados
 
-  final String cifEmpresa;
+  final String cifEmpresa;               // CIF de la empresa gestionada
 
   AdminProvider(this.cifEmpresa);
 
   // ==================== EMPLEADOS ====================
 
+  /// Carga los empleados de la base de datos local
   Future<void> cargarEmpleados() async {
     final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
+    final maps =
+        await db.query('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
     empleados = maps.map((m) => Empleado.fromMap(m)).toList();
     notifyListeners();
   }
 
+  /// Sincroniza todos los empleados con el backend y recarga local
+  Future<void> sincronizarEmpleadosCompleto() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    final baseUrl = prefs.getString('baseUrl') ?? '';
+
+    if (token.isEmpty || baseUrl.isEmpty) {
+      print('[AdminProvider.sincronizarEmpleadosCompleto] Token o baseUrl no configurados');
+      return;
+    }
+
+    try {
+      print('[AdminProvider.sincronizarEmpleadosCompleto] Iniciando sincronización completa de empleados...');
+      await EmpleadoService.sincronizarEmpleadosCompleto(token, baseUrl, cifEmpresa);
+      await cargarEmpleados();
+      print('[AdminProvider.sincronizarEmpleadosCompleto] Sincronización completa de empleados finalizada');
+    } catch (e) {
+      print('[AdminProvider.sincronizarEmpleadosCompleto] Error sincronizando empleados: $e');
+    }
+  }
+
+  /// Carga los fichajes/históricos de la base de datos local
   Future<void> cargarHistoricos() async {
     final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
+    final maps =
+        await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
     historicos = maps.map((m) => Historico.fromMap(m)).toList();
     notifyListeners();
   }
 
+  /// Carga las incidencias de la base de datos local
   Future<void> cargarIncidencias() async {
     incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
     notifyListeners();
   }
 
+  /// Sincroniza todos los fichajes/históricos con el backend y recarga local
   Future<void> sincronizarHistoricoCompleto() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -64,6 +94,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Carga todos los datos iniciales (histórico, empleados, incidencias)
   Future<void> cargarDatosIniciales() async {
     print('[AdminProvider] Inicio cargarDatosIniciales');
     await sincronizarHistoricoCompleto();
@@ -72,6 +103,7 @@ class AdminProvider extends ChangeNotifier {
     print('[AdminProvider] Fin cargarDatosIniciales');
   }
 
+  /// Añade un empleado (remoto y local)
   Future<String?> addEmpleado(Empleado empleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -83,9 +115,8 @@ class AdminProvider extends ChangeNotifier {
       );
 
       if (respuesta.startsWith("OK")) {
-        final db = await DatabaseHelper.instance.database;
-        await db.insert('empleados', empleado.toMap());
-        await cargarEmpleados();
+        // Sincronizar todos los empleados tras añadir
+        await sincronizarEmpleadosCompleto();
         return null;
       } else {
         return respuesta;
@@ -95,6 +126,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Actualiza un empleado (remoto y local)
   Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -115,40 +147,16 @@ class AdminProvider extends ChangeNotifier {
         return respuesta;
       }
 
-      final db = await DatabaseHelper.instance.database;
-      final registros = await db.query(
-        'empleados',
-        where: 'usuario = ? AND cif_empresa = ?',
-        whereArgs: [usuarioOriginal, empleado.cifEmpresa],
-      );
+      // Sincronizar todos los empleados tras actualizar
+      await sincronizarEmpleadosCompleto();
 
-      if (registros.isEmpty) {
-        return 'No existe registro con usuario $usuarioOriginal y empresa ${empleado.cifEmpresa}';
-      }
-
-      final Map<String, dynamic> dataLocal = empleado.toMap();
-      if (empleado.passwordHash == null || empleado.passwordHash!.isEmpty) {
-        dataLocal.remove('password_hash');
-      }
-
-      final count = await db.update(
-        'empleados',
-        dataLocal,
-        where: 'usuario = ? AND cif_empresa = ?',
-        whereArgs: [usuarioOriginal, empleado.cifEmpresa],
-      );
-
-      if (count == 0) {
-        return 'No se encontró el registro o no hubo cambios';
-      }
-
-      await cargarEmpleados();
       return null;
     } catch (e) {
       return 'Error actualizando empleado: $e';
     }
   }
 
+  /// Da de baja a un empleado (remoto y local)
   Future<String?> bajaEmpleado(String usuario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -185,25 +193,16 @@ class AdminProvider extends ChangeNotifier {
         return respuesta;
       }
 
-      final db = await DatabaseHelper.instance.database;
-      final count = await db.update(
-        'empleados',
-        empleadoBaja.toMap(),
-        where: 'usuario = ? AND cif_empresa = ?',
-        whereArgs: [usuario, cifEmpresa],
-      );
+      // Sincronizar todos los empleados tras dar de baja
+      await sincronizarEmpleadosCompleto();
 
-      if (count == 0) {
-        return 'No se encontró el registro para dar de baja';
-      }
-
-      await cargarEmpleados();
       return null;
     } catch (e) {
       return 'Error dando de baja empleado: $e';
     }
   }
 
+  /// Elimina un empleado (remoto y local)
   Future<String?> deleteEmpleado(String usuario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -213,9 +212,8 @@ class AdminProvider extends ChangeNotifier {
       token: token,
     );
     if (respuesta.startsWith("OK")) {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete('empleados', where: 'usuario = ? AND cif_empresa = ?', whereArgs: [usuario, cifEmpresa]);
-      await cargarEmpleados();
+      // Sincronizar todos los empleados tras borrar
+      await sincronizarEmpleadosCompleto();
       return null;
     } else {
       return respuesta;
@@ -224,6 +222,7 @@ class AdminProvider extends ChangeNotifier {
 
   // ==================== INCIDENCIAS ====================
 
+  /// Añade una incidencia (remoto y local)
   Future<String?> addIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -241,6 +240,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Actualiza una incidencia (remoto y local)
   Future<String?> updateIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -263,6 +263,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Elimina una incidencia (remoto y local)
   Future<String?> deleteIncidencia(String codigo) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -314,8 +315,8 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  /// ==================== NUEVO: Cargar todos los horarios de la empresa ====================
-  Future<void> cargarHorariosEmpresa(String cifEmpresa) async {  // <--- NUEVO
+  /// Cargar todos los horarios de la empresa desde la API y actualiza local
+  Future<void> cargarHorariosEmpresa(String cifEmpresa) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
     final baseUrl = prefs.getString('baseUrl') ?? '';
@@ -340,6 +341,9 @@ class AdminProvider extends ChangeNotifier {
   }
 
   /// Añadir horario de empleado (Remoto + Local)
+  /// Añade un horario tanto en el servidor remoto como en la base de datos local.
+  /// Si la inserción remota es exitosa, también inserta localmente y recarga los horarios de la empresa.
+  /// Devuelve null si todo va bien, o un mensaje de error si falla.
   Future<String?> addHorarioEmpleado(HorarioEmpleado horario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -350,8 +354,7 @@ class AdminProvider extends ChangeNotifier {
       );
       if (okRemoto) {
         await HorariosService.insertarHorarioLocal(horario);
-        // Decide qué refrescar: si tienes un filtro activo, carga ese, si no, recarga todos
-        await cargarHorariosEmpresa(horario.cifEmpresa); // <--- MEJOR SIEMPRE REFRESCAR TODO
+        await cargarHorariosEmpresa(horario.cifEmpresa);
         return null;
       } else {
         return 'No se pudo crear el horario';
@@ -362,6 +365,9 @@ class AdminProvider extends ChangeNotifier {
   }
 
   /// Actualizar horario de empleado (Remoto + Local)
+  /// Actualiza un horario tanto en el servidor remoto como en la base de datos local.
+  /// Si la actualización remota es exitosa, también actualiza localmente y recarga los horarios de la empresa.
+  /// Devuelve null si todo va bien, o un mensaje de error si falla.
   Future<String?> updateHorarioEmpleado(HorarioEmpleado horario) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -372,7 +378,7 @@ class AdminProvider extends ChangeNotifier {
       );
       if (okRemoto) {
         await HorariosService.actualizarHorarioLocal(horario);
-        await cargarHorariosEmpresa(horario.cifEmpresa); // <--- MEJOR SIEMPRE REFRESCAR TODO
+        await cargarHorariosEmpresa(horario.cifEmpresa);
         return null;
       } else {
         return 'No se pudo actualizar el horario';
@@ -383,20 +389,27 @@ class AdminProvider extends ChangeNotifier {
   }
 
   /// Eliminar horario de empleado (Remoto + Local)
+  /// Elimina un horario tanto en el servidor remoto como en la base de datos local.
+  /// Si la eliminación remota es exitosa, también elimina localmente y recarga los horarios de la empresa.
+  /// Devuelve null si todo va bien, o un mensaje de error si falla.
   Future<String?> deleteHorarioEmpleado(int id, String dniEmpleado) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
     try {
+      // Llama al servicio remoto para eliminar el horario en el backend
       final okRemoto = await HorariosService.eliminarHorarioRemoto(id: id, token: token);
       if (okRemoto) {
+        // Si se elimina correctamente en remoto, elimina también en local
         await HorariosService.eliminarHorarioLocal(id);
-        // También refresca toda la lista global (mejor UX)
-        await cargarHorariosEmpresa(cifEmpresa); // <--- MEJOR SIEMPRE REFRESCAR TODO
+        // Recarga los horarios de la empresa para actualizar la vista
+        await cargarHorariosEmpresa(cifEmpresa);
         return null;
       } else {
+        // Si falla la eliminación remota, devuelve mensaje de error
         return 'No se pudo eliminar el horario';
       }
     } catch (e) {
+      // Si ocurre una excepción, devuelve el error formateado
       return 'Error eliminando horario: $e';
     }
   }

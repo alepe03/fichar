@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 import 'admin_screen.dart';
-import 'about_screen.dart';               // <-- Importa tu pantalla Acerca de
+import 'about_screen.dart';             
 import '../providers/admin_provider.dart';
 
 class HomeScreenAdmin extends StatefulWidget {

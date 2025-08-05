@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 import 'historico_screen.dart';
-import 'about_screen.dart'; // <-- Importa tu nueva pantalla
+import 'about_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String usuario;

@@ -1,12 +1,12 @@
 // lib/services/auth_service.dart
 
-import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import '../models/empleado.dart';
-import '../config.dart';
+
 
 class AuthService {
   /// Login local sin cambios

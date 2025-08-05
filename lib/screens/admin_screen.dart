@@ -1291,6 +1291,7 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
   }
 }
 
+
 class HorariosTab extends StatefulWidget {
   const HorariosTab({Key? key}) : super(key: key);
 
@@ -1487,7 +1488,6 @@ class _HorariosTabState extends State<HorariosTab> {
     );
   }
 }
-
 class _FormularioHorario extends StatefulWidget {
   final String cifEmpresa;
   final List<Empleado> empleados;
@@ -1548,14 +1548,20 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
 
     final result = await showModalBottomSheet<TimeOfDay>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return _TimePickerWheel(
-          initialHour: initial.hour,
-          initialMinute: initial.minute,
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: SafeArea(
+            child: _TimePickerWheel(
+              initialHour: initial.hour,
+              initialMinute: initial.minute,
+            ),
+          ),
         );
       },
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
     );
 
     if (result != null) {
@@ -1573,8 +1579,8 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   Widget build(BuildContext context) {
     final isEditing = widget.horarioExistente != null;
 
-    return SingleChildScrollView(
-      child: Padding(
+    return SafeArea(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(12),
         child: Form(
           key: _formKey,
@@ -1738,7 +1744,8 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
 
   @override
   Widget build(BuildContext context) {
-    const double wheelDiameter = 150;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final wheelDiameter = (screenWidth - 80) / 2; // Ajusta según espacios
     const TextStyle textStyle = TextStyle(fontSize: 32);
 
     return Container(
@@ -1785,9 +1792,9 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
                   ),
                 ),
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 8),
               const Text(':', style: TextStyle(fontSize: 32)),
-              const SizedBox(width: 20),
+              const SizedBox(width: 8),
               SizedBox(
                 width: wheelDiameter,
                 height: wheelDiameter,

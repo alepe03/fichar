@@ -41,6 +41,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ─── Configuración de SQLite según plataforma ──────────────────────────────────
+  // Selecciona la fábrica de base de datos adecuada según si es web, Windows, Linux o MacOS
   if (kIsWeb) {
     databaseFactory = databaseFactoryFfiWeb;
   } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -49,12 +50,14 @@ Future<void> main() async {
   }
 
   // ─── Carga de configuración de sincronización ──────────────────────────────────
+  // Recupera token, baseUrl y nombreBD de SharedPreferences para usarlos en la sincronización
   final prefs    = await SharedPreferences.getInstance();
   final token    = prefs.getString('token')    ?? '';
   final baseUrl  = prefs.getString('baseUrl')  ?? '';
   final nombreBD = prefs.getString('nombreBD') ?? '';
 
   // ─── Comprueba conexión real a Internet ────────────────────────────────────────
+  // Función auxiliar para comprobar si hay acceso real a Internet (no solo red local)
   Future<bool> _hasInternet() async {
     try {
       final resp = await http
@@ -67,6 +70,7 @@ Future<void> main() async {
   }
 
   // ─── Chequeo inicial de red y sincronización ───────────────────────────────────
+  // Al arrancar, si hay red e Internet, intenta sincronizar los registros pendientes
   final initial = await Connectivity().checkConnectivity();
   debugPrint('🔍 Estado inicial de red: $initial');
   if (initial != ConnectivityResult.none && await _hasInternet()) {
@@ -83,6 +87,7 @@ Future<void> main() async {
   }
 
   // ─── Listener de cambios de conectividad ───────────────────────────────────────
+  // Escucha cambios de conectividad y, si se recupera Internet, intenta sincronizar
   Connectivity().onConnectivityChanged.listen((status) async {
     debugPrint('🔔 Cambió conectividad: $status');
     if (status != ConnectivityResult.none && await _hasInternet()) {
@@ -105,6 +110,7 @@ Future<void> main() async {
 class FichadorApp extends StatelessWidget {
   const FichadorApp({super.key});
 
+  // Obtiene el CIF de la empresa guardado en SharedPreferences
   Future<String?> _obtenerCifEmpresa() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('cif_empresa');
@@ -112,15 +118,18 @@ class FichadorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Usa FutureBuilder para esperar a que SharedPreferences esté disponible
     return FutureBuilder<String?>(
       future: _obtenerCifEmpresa(),
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.done) {
           final cif = snap.data;
+          // Si hay CIF, muestra la pantalla de login; si no, la de introducción de CIF
           final home = (cif?.isNotEmpty ?? false)
             ? const LoginScreen()
             : const VCifScreen();
 
+          // MultiProvider para inyectar el AdminProvider con el CIF
           return MultiProvider(
             providers: [
               ChangeNotifierProvider(create: (_) => AdminProvider(cif ?? '')),
@@ -128,7 +137,7 @@ class FichadorApp extends StatelessWidget {
             child: MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: ThemeData(
-                platform: TargetPlatform.android,
+                platform: TargetPlatform.android, // Fuerza apariencia Android
                 primaryColor: Colors.blue[800],
                 scaffoldBackgroundColor: Colors.white,
                 appBarTheme: const AppBarTheme(
@@ -164,8 +173,8 @@ class FichadorApp extends StatelessWidget {
                   ),
                 ),
               ),
-              scrollBehavior: MobileScrollBehavior(),
-              home: home,
+              scrollBehavior: MobileScrollBehavior(), // Quita scrollbar visible
+              home: home, // Pantalla principal según si hay CIF o no
               routes: {'/login': (_) => const LoginScreen(), '/cif': (_) => const VCifScreen()},
             ),
           );

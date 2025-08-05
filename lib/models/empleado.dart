@@ -1,18 +1,21 @@
+/// Modelo de datos para un empleado de la empresa.
+/// Representa la información básica y de control de acceso de cada empleado.
 class Empleado {
-  final String usuario;
-  final String cifEmpresa;
-  final String? direccion;
-  final String? poblacion;
-  final String? codigoPostal;
-  final String? telefono;
-  final String? email;
-  final String? nombre;
-  final String? dni;
-  final String? rol;
-  final String? passwordHash;
-  final int puedeLocalizar;
-  final int activo; // 1=activo, 0=de baja
+  final String usuario;         // Identificador único del usuario (login)
+  final String cifEmpresa;      // CIF de la empresa a la que pertenece
+  final String? direccion;      // Dirección del empleado (opcional)
+  final String? poblacion;      // Población/ciudad (opcional)
+  final String? codigoPostal;   // Código postal (opcional)
+  final String? telefono;       // Teléfono de contacto (opcional)
+  final String? email;          // Email del empleado (opcional)
+  final String? nombre;         // Nombre completo (opcional)
+  final String? dni;            // DNI/NIF del empleado (opcional)
+  final String? rol;            // Rol o perfil (admin, user, etc.) (opcional)
+  final String? passwordHash;   // Hash de la contraseña (opcional)
+  final int puedeLocalizar;     // 1=puede ser localizado, 0=no (por privacidad)
+  final int activo;             // 1=activo, 0=de baja
 
+  /// Constructor principal
   Empleado({
     required this.usuario,
     required this.cifEmpresa,
@@ -29,6 +32,7 @@ class Empleado {
     this.activo = 1,
   });
 
+  /// Crea un Empleado a partir de una línea CSV separada por ';'
   factory Empleado.fromCsv(String line) {
     final parts = line.split(';');
     return Empleado(
@@ -48,6 +52,7 @@ class Empleado {
     );
   }
 
+  /// Crea un Empleado a partir de un Map (por ejemplo, de la base de datos)
   factory Empleado.fromMap(Map<String, Object?> map) {
     return Empleado(
       usuario: map['usuario']?.toString() ?? '',
@@ -66,6 +71,7 @@ class Empleado {
     );
   }
 
+  /// Convierte el objeto Empleado a un Map para guardar en la base de datos
   Map<String, dynamic> toMap() {
     return {
       'usuario': usuario,
@@ -84,6 +90,7 @@ class Empleado {
     };
   }
 
+  /// Permite crear una copia del empleado con algunos campos modificados
   Empleado copyWith({
     String? usuario,
     String? cifEmpresa,

@@ -61,6 +61,43 @@ class EmpleadoService {
     }
   }
 
+  // Nueva función para sincronizar empleados completos (descargar y guardar)
+  static Future<void> sincronizarEmpleadosCompleto(String token, String baseUrl, String cifEmpresa) async {
+    if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
+      throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
+    }
+
+    const nombreBD = 'qame400';
+
+    final url = Uri.parse(
+      '$baseUrl?Token=$token&Bd=$nombreBD&Code=200&cif_empresa=$cifEmpresa',
+    );
+
+    print('Descargando empleados para sincronización completa desde: $url');
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final List<Empleado> empleados = await compute(parseEmpleadosCsv, response.body);
+
+      final db = await DatabaseHelper.instance.database;
+
+      await db.delete('empleados', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
+
+      for (var emp in empleados) {
+        await db.insert(
+          'empleados',
+          emp.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      print('Empleados sincronizados y guardados localmente: ${empleados.length}');
+    } else {
+      throw Exception('Error descargando empleados para sincronización: ${response.statusCode}');
+    }
+  }
+
   // Inserta un empleado en la API (alta remota)
   static Future<String> insertarEmpleadoRemoto({
     required Empleado empleado,
@@ -113,7 +150,7 @@ class EmpleadoService {
     }
   }
 
-  // ✅ Actualiza un empleado en la API (no enviar password si está vacía)
+  // Actualiza un empleado en la API (no enviar password si está vacía)
   static Future<String> actualizarEmpleadoRemoto({
     required Empleado empleado,
     required String usuarioOriginal,
@@ -138,7 +175,7 @@ class EmpleadoService {
       'activo': empleado.activo.toString(),
     };
 
-    // ✅ Agregar password solo si no es null ni vacía
+    // Agregar password solo si no es null ni vacía
     if (empleado.passwordHash != null && empleado.passwordHash!.isNotEmpty) {
       body['password_hash'] = empleado.passwordHash!;
     }

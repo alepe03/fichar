@@ -6,7 +6,7 @@ class Sucursal {
   final String? direccion;   // Dirección de la sucursal (opcional)
   final String? horario;     // Horario de la sucursal (opcional)
 
-  // Constructor
+  // Constructor principal para crear una sucursal
   Sucursal({
     required this.cifEmpresa,
     required this.codigo,
@@ -41,11 +41,11 @@ class Sucursal {
   // Convierte la sucursal a un mapa (para guardar en base de datos)
   Map<String, dynamic> toMap() {
     return {
-      'cif_empresa': cifEmpresa,
-      'codigo': codigo,
-      'nombre': nombre,
-      'direccion': direccion,
-      'horario': horario,
+      'cif_empresa': cifEmpresa, // CIF de la empresa
+      'codigo': codigo,          // Código de la sucursal
+      'nombre': nombre,          // Nombre de la sucursal
+      'direccion': direccion,    // Dirección (opcional)
+      'horario': horario,        // Horario (opcional)
     };
   }
 }
