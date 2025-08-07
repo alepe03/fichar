@@ -295,28 +295,33 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   bool puedeFicharAhora() {
-    if (_cargandoHorarios) return false;
+  if (_cargandoHorarios) return false;
 
-    if (_tramosHoy.isEmpty) {
+  if (_tramosHoy.isEmpty) {
+    // Si no hay tramos, permitimos fichar siempre
+    return true;
+  }
+
+  final ahora = TimeOfDay.now();
+
+  for (final tramo in _tramosHoy) {
+    final inicio = _parseTime(tramo.horaInicio);
+
+    // Nuevo: márgenes personalizados
+    final margenAntes = tramo.margenEntradaAntes; // minutos antes permitidos
+    final margenDespues = tramo.margenEntradaDespues ?? 0; // minutos después permitidos (usa 0 si no existe)
+
+    final minutosInicio = inicio.hour * 60 + inicio.minute - margenAntes;
+    final minutosFin = inicio.hour * 60 + inicio.minute + margenDespues;
+
+    final minutosAhora = ahora.hour * 60 + ahora.minute;
+
+    if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
       return true;
     }
-
-    final ahora = TimeOfDay.now();
-
-    for (final tramo in _tramosHoy) {
-      final inicio = _parseTime(tramo.horaInicio);
-      final fin = _parseTime(tramo.horaFin);
-
-      final minutosInicio = inicio.hour * 60 + inicio.minute - 10;
-      final minutosFin = fin.hour * 60 + fin.minute;
-      final minutosAhora = ahora.hour * 60 + ahora.minute;
-
-      if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
-        return true;
-      }
-    }
-    return false;
   }
+  return false;
+}
 
   TimeOfDay _parseTime(String timeStr) {
     final parts = timeStr.split(':');

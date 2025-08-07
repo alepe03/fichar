@@ -14,7 +14,7 @@ List<HorarioEmpleado> parseHorariosCsv(String csvBody) {
   for (var line in lines) {
     if (line.trim().isEmpty) continue;
     try {
-      horarios.add(HorarioEmpleado.fromCsv(line));
+      horarios.add(HorarioEmpleado.fromCsv(line)); // Incluye ambos márgenes
     } catch (e) {
       print('Error parseando línea CSV: $line\nError: $e');
     }
@@ -63,7 +63,6 @@ class HorariosService {
         );
       }
 
-      // Confirmar que quedan horarios en la BD tras insertar
       final mapas = await db.query('horarios_empleado', where: 'dni_empleado = ? AND cif_empresa = ?', whereArgs: [dniEmpleado, cifEmpresa]);
       print('Horarios en BD local después de insertar:');
       for (var m in mapas) {
@@ -86,7 +85,6 @@ class HorariosService {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
 
-    // <-- AQUÍ EL CAMBIO: Code=800 y solo cif_empresa
     final url = Uri.parse('$baseUrl?Token=$token&Code=800&cif_empresa=$cifEmpresa');
     print('Descargando TODOS los horarios desde: $url');
     final response = await http.get(url);
@@ -100,7 +98,6 @@ class HorariosService {
       print('Número de horarios parseados: ${horarios.length}');
       final db = await DatabaseHelper.instance.database;
 
-      // Borra TODOS los horarios locales de esa empresa antes de insertar los nuevos
       await db.delete('horarios_empleado', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
 
       for (var h in horarios) {
@@ -111,7 +108,6 @@ class HorariosService {
         );
       }
 
-      // Confirma BD local tras insertar
       final mapas = await db.query('horarios_empleado', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
       print('Horarios en BD local después de insertar (todos):');
       for (var m in mapas) {
@@ -168,6 +164,8 @@ class HorariosService {
       'hora_inicio': horario.horaInicio,
       'hora_fin': horario.horaFin,
       'nombre_turno': horario.nombreTurno ?? '',
+      'margen_entrada_antes': horario.margenEntradaAntes.toString(),
+      'margen_entrada_despues': horario.margenEntradaDespues.toString(),
     };
 
     final response = await http.post(
@@ -199,6 +197,8 @@ class HorariosService {
       'hora_inicio': horario.horaInicio,
       'hora_fin': horario.horaFin,
       'nombre_turno': horario.nombreTurno ?? '',
+      'margen_entrada_antes': horario.margenEntradaAntes.toString(),
+      'margen_entrada_despues': horario.margenEntradaDespues.toString(),
     };
 
     final response = await http.post(

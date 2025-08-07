@@ -1,15 +1,14 @@
-// Modelo de datos para el horario de un empleado
-
 class HorarioEmpleado {
-  final int? id;                // ID único en la base de datos (autoincremental, opcional)
-  final String dniEmpleado;     // DNI del empleado al que pertenece el horario
-  final String cifEmpresa;      // CIF de la empresa
-  final int diaSemana;          // Día de la semana (0 = Lunes, ..., 6 = Domingo)
-  final String horaInicio;      // Hora de inicio del turno (formato 'HH:mm')
-  final String horaFin;         // Hora de fin del turno (formato 'HH:mm')
-  final String? nombreTurno;    // Nombre del turno (opcional, por ejemplo "Mañana")
+  final int? id;
+  final String dniEmpleado;
+  final String cifEmpresa;
+  final int diaSemana;
+  final String horaInicio;
+  final String horaFin;
+  final String? nombreTurno;
+  final int margenEntradaAntes;
+  final int margenEntradaDespues; // <- NUEVO
 
-  /// Constructor principal
   HorarioEmpleado({
     this.id,
     required this.dniEmpleado,
@@ -18,9 +17,10 @@ class HorarioEmpleado {
     required this.horaInicio,
     required this.horaFin,
     this.nombreTurno,
+    this.margenEntradaAntes = 10,
+    this.margenEntradaDespues = 30, // Valor por defecto a 30 min
   });
 
-  /// Crea un HorarioEmpleado a partir de un Map (por ejemplo, desde SQLite o una API)
   factory HorarioEmpleado.fromMap(Map<String, dynamic> map) {
     return HorarioEmpleado(
       id: map['id'] is int ? map['id'] : int.tryParse('${map['id']}'),
@@ -30,10 +30,15 @@ class HorarioEmpleado {
       horaInicio: map['hora_inicio'],
       horaFin: map['hora_fin'],
       nombreTurno: map['nombre_turno'],
+      margenEntradaAntes: map['margen_entrada_antes'] is int
+          ? map['margen_entrada_antes']
+          : int.tryParse('${map['margen_entrada_antes'] ?? "10"}') ?? 10,
+      margenEntradaDespues: map['margen_entrada_despues'] is int
+          ? map['margen_entrada_despues']
+          : int.tryParse('${map['margen_entrada_despues'] ?? "30"}') ?? 30,
     );
   }
 
-  /// Crea un HorarioEmpleado a partir de una línea CSV separada por ';'
   factory HorarioEmpleado.fromCsv(String line) {
     final fields = line.split(';');
     return HorarioEmpleado(
@@ -44,10 +49,11 @@ class HorarioEmpleado {
       horaInicio: fields[4],
       horaFin: fields[5],
       nombreTurno: fields.length > 6 ? fields[6] : null,
+      margenEntradaAntes: fields.length > 7 ? int.tryParse(fields[7]) ?? 10 : 10,
+      margenEntradaDespues: fields.length > 8 ? int.tryParse(fields[8]) ?? 30 : 30,
     );
   }
 
-  /// Convierte el objeto a un Map para guardar en la base de datos o enviar por red
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -57,13 +63,15 @@ class HorarioEmpleado {
       'hora_inicio': horaInicio,
       'hora_fin': horaFin,
       'nombre_turno': nombreTurno,
+      'margen_entrada_antes': margenEntradaAntes,
+      'margen_entrada_despues': margenEntradaDespues,
     };
   }
 
-  /// Representación legible del objeto (útil para debug)
   @override
   String toString() {
     return 'HorarioEmpleado{id: $id, dni: $dniEmpleado, empresa: $cifEmpresa, '
-        'dia: $diaSemana, $horaInicio-$horaFin, turno: $nombreTurno}';
+        'dia: $diaSemana, $horaInicio-$horaFin, turno: $nombreTurno, '
+        'margenEntradaAntes: $margenEntradaAntes, margenEntradaDespues: $margenEntradaDespues}';
   }
 }

@@ -27,7 +27,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 6, // ¡Actualiza aquí si cambias la estructura!
+      version: 8, // ¡Actualiza aquí si cambias la estructura!
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -116,7 +116,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de horarios de empleados
+    // Tabla de horarios de empleados CON LOS DOS CAMPOS DE MARGEN
     await db.execute('''
       CREATE TABLE IF NOT EXISTS horarios_empleado (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +125,9 @@ class DatabaseHelper {
         dia_semana INTEGER NOT NULL,
         hora_inicio TEXT NOT NULL,
         hora_fin TEXT NOT NULL,
-        nombre_turno TEXT
+        nombre_turno TEXT,
+        margen_entrada_antes INTEGER NOT NULL DEFAULT 10,
+        margen_entrada_despues INTEGER NOT NULL DEFAULT 30
       )
     ''');
 
@@ -159,6 +161,24 @@ class DatabaseHelper {
           nombre_turno TEXT
         )
       ''');
+    }
+    // MIGRACIÓN A V7: Añade la columna margen_entrada_antes si vienes de una versión anterior
+    if (oldVersion < 7) {
+      try {
+        await db.execute('ALTER TABLE horarios_empleado ADD COLUMN margen_entrada_antes INTEGER NOT NULL DEFAULT 10');
+        print('[DEBUG][DatabaseHelper] Columna margen_entrada_antes añadida a horarios_empleado');
+      } catch (e) {
+        print('[DatabaseHelper][Upgrade] Error añadiendo columna margen_entrada_antes: $e');
+      }
+    }
+    // MIGRACIÓN A V8: Añade la columna margen_entrada_despues si vienes de una versión anterior
+    if (oldVersion < 8) {
+      try {
+        await db.execute('ALTER TABLE horarios_empleado ADD COLUMN margen_entrada_despues INTEGER NOT NULL DEFAULT 30');
+        print('[DEBUG][DatabaseHelper] Columna margen_entrada_despues añadida a horarios_empleado');
+      } catch (e) {
+        print('[DatabaseHelper][Upgrade] Error añadiendo columna margen_entrada_despues: $e');
+      }
     }
   }
 

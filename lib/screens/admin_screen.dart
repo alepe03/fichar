@@ -1319,7 +1319,10 @@ class _HorariosTabState extends State<HorariosTab> {
     final provider = Provider.of<AdminProvider>(context, listen: false);
     showDialog(
       context: context,
+      barrierColor: Colors.transparent, // Para que el fondo sea transparente
       builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -1333,6 +1336,19 @@ class _HorariosTabState extends State<HorariosTab> {
                 error = await provider.addHorarioEmpleado(nuevoHorario);
               } else {
                 error = await provider.updateHorarioEmpleado(nuevoHorario);
+              }
+              if (context.mounted) Navigator.pop(context);
+              if (error != null && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                );
+              }
+            },
+            onSubmitMultiple: (nuevosHorarios) async {
+              String? error;
+              for (final horario in nuevosHorarios) {
+                error = await provider.addHorarioEmpleado(horario);
+                if (error != null) break;
               }
               if (context.mounted) Navigator.pop(context);
               if (error != null && context.mounted) {
@@ -1368,9 +1384,9 @@ class _HorariosTabState extends State<HorariosTab> {
                     value: null,
                     child: Text('Todos los empleados'),
                   ),
-                  ...provider.empleados.map(
+                  ...provider.empleados.where((e) => e.dni != null).map(
                     (e) => DropdownMenuItem<String?>(
-                      value: e.dni,
+                      value: e.dni!,
                       child: Text(e.nombre ?? e.usuario),
                     ),
                   ),
@@ -1488,11 +1504,13 @@ class _HorariosTabState extends State<HorariosTab> {
     );
   }
 }
+
 class _FormularioHorario extends StatefulWidget {
   final String cifEmpresa;
   final List<Empleado> empleados;
   final HorarioEmpleado? horarioExistente;
   final void Function(HorarioEmpleado horario) onSubmit;
+  final void Function(List<HorarioEmpleado> horarios)? onSubmitMultiple;
 
   const _FormularioHorario({
     Key? key,
@@ -1500,6 +1518,7 @@ class _FormularioHorario extends StatefulWidget {
     required this.empleados,
     this.horarioExistente,
     required this.onSubmit,
+    this.onSubmitMultiple,
   }) : super(key: key);
 
   @override
@@ -1509,11 +1528,13 @@ class _FormularioHorario extends StatefulWidget {
 class _FormularioHorarioState extends State<_FormularioHorario> {
   final _formKey = GlobalKey<FormState>();
 
-  int _diaSemana = 0;
+  List<String> _empleadosSeleccionados = [];
+  List<int> _diasSeleccionados = [];
   TimeOfDay? _horaInicio;
   TimeOfDay? _horaFin;
   TextEditingController _nombreTurnoCtrl = TextEditingController();
-  String? _dniEmpleadoSeleccionado;
+  TextEditingController _margenCtrl = TextEditingController();
+  TextEditingController _margenDespuesCtrl = TextEditingController();
 
   final List<String> _diasSemana = [
     'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
@@ -1523,11 +1544,16 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   void initState() {
     super.initState();
     if (widget.horarioExistente != null) {
-      _diaSemana = widget.horarioExistente!.diaSemana;
+      _empleadosSeleccionados = [widget.horarioExistente!.dniEmpleado];
+      _diasSeleccionados = [widget.horarioExistente!.diaSemana];
       _horaInicio = _parseTime(widget.horarioExistente!.horaInicio);
       _horaFin = _parseTime(widget.horarioExistente!.horaFin);
       _nombreTurnoCtrl.text = widget.horarioExistente?.nombreTurno ?? '';
-      _dniEmpleadoSeleccionado = widget.horarioExistente!.dniEmpleado;
+      _margenCtrl.text = widget.horarioExistente?.margenEntradaAntes.toString() ?? "10";
+      _margenDespuesCtrl.text = widget.horarioExistente?.margenEntradaDespues.toString() ?? "30";
+    } else {
+      _margenCtrl.text = "10";
+      _margenDespuesCtrl.text = "30";
     }
   }
 
@@ -1575,129 +1601,378 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
     }
   }
 
+  bool get isEditing => widget.horarioExistente != null;
+
+  bool _isFormValid() {
+    if (_horaInicio == null || _horaFin == null) return false;
+    if (_horaInicio!.hour * 60 + _horaInicio!.minute >= _horaFin!.hour * 60 + _horaFin!.minute) return false;
+    if (!isEditing && _empleadosSeleccionados.isEmpty) return false;
+    if (!isEditing && _diasSeleccionados.isEmpty) return false;
+    if (int.tryParse(_margenCtrl.text) == null || int.parse(_margenCtrl.text) < 0) return false;
+    if (int.tryParse(_margenDespuesCtrl.text) == null || int.parse(_margenDespuesCtrl.text) < 0) return false;
+    return true;
+  }
+
+  void _guardar() {
+    if (!_isFormValid()) return;
+
+    final margen = int.tryParse(_margenCtrl.text) ?? 10;
+    final margenDespues = int.tryParse(_margenDespuesCtrl.text) ?? 30;
+
+    if (isEditing) {
+      final nuevoHorario = HorarioEmpleado(
+        id: widget.horarioExistente?.id,
+        dniEmpleado: _empleadosSeleccionados.first,
+        cifEmpresa: widget.cifEmpresa,
+        diaSemana: _diasSeleccionados.first,
+        horaInicio: _formatTime(_horaInicio),
+        horaFin: _formatTime(_horaFin),
+        nombreTurno: _nombreTurnoCtrl.text.trim(),
+        margenEntradaAntes: margen,
+        margenEntradaDespues: margenDespues,
+      );
+      widget.onSubmit(nuevoHorario);
+    } else {
+      final horarios = <HorarioEmpleado>[];
+      for (final dni in _empleadosSeleccionados) {
+        for (final dia in _diasSeleccionados) {
+          horarios.add(
+            HorarioEmpleado(
+              dniEmpleado: dni,
+              cifEmpresa: widget.cifEmpresa,
+              diaSemana: dia,
+              horaInicio: _formatTime(_horaInicio),
+              horaFin: _formatTime(_horaFin),
+              nombreTurno: _nombreTurnoCtrl.text.trim(),
+              margenEntradaAntes: margen,
+              margenEntradaDespues: margenDespues,
+            ),
+          );
+        }
+      }
+      if (widget.onSubmitMultiple != null) {
+        widget.onSubmitMultiple!(horarios);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.horarioExistente != null;
+    final empleadosList = widget.empleados.where((e) => e.dni != null).toList();
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                isEditing ? 'Editar horario' : 'Nuevo horario',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Empleado',
-                  border: OutlineInputBorder(),
+      child: Material(
+        color: Colors.transparent,
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(),
+            margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 32,
+                  offset: Offset(0, 12),
                 ),
-                value: _dniEmpleadoSeleccionado,
-                items: widget.empleados
-                    .map(
-                      (empleado) => DropdownMenuItem<String>(
-                        value: empleado.dni,
-                        child: Text(empleado.nombre ?? empleado.usuario),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Stack(
+                children: [
+                  SingleChildScrollView(
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Icono y título elegante
+                          Row(
+                            children: [
+                              Icon(Icons.schedule, size: 40, color: Colors.blue.shade600),
+                              const SizedBox(width: 12),
+                              Text(
+                                isEditing ? 'Editar horario' : 'Nuevo horario',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Empleados
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Empleados',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                color: Colors.grey[900],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: empleadosList.map((emp) {
+                              final checked = _empleadosSeleccionados.contains(emp.dni!);
+                              return FilterChip(
+                                label: Text(emp.nombre ?? emp.usuario),
+                                labelStyle: TextStyle(
+                                  color: checked ? Colors.white : Colors.blue.shade800,
+                                  fontWeight: checked ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                selected: checked,
+                                onSelected: isEditing
+                                    ? null
+                                    : (val) {
+                                        setState(() {
+                                          if (emp.dni == null) return;
+                                          if (val) {
+                                            if (!_empleadosSeleccionados.contains(emp.dni!)) {
+                                              _empleadosSeleccionados.add(emp.dni!);
+                                            }
+                                          } else {
+                                            _empleadosSeleccionados.remove(emp.dni!);
+                                          }
+                                        });
+                                      },
+                                selectedColor: Colors.blue.shade600,
+                                backgroundColor: Colors.blue.shade50,
+                                showCheckmark: checked,
+                                elevation: checked ? 2 : 0,
+                                shadowColor: Colors.black12,
+                                disabledColor: Colors.grey.shade200,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Días de la semana
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Días de la semana',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                color: Colors.grey[900],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: List.generate(_diasSemana.length, (i) {
+                              final checked = _diasSeleccionados.contains(i);
+                              return FilterChip(
+                                label: Text(_diasSemana[i]),
+                                labelStyle: TextStyle(
+                                  color: checked ? Colors.white : Colors.blue.shade800,
+                                ),
+                                selected: checked,
+                                onSelected: isEditing
+                                    ? null
+                                    : (val) {
+                                        setState(() {
+                                          if (val) {
+                                            if (!_diasSeleccionados.contains(i)) _diasSeleccionados.add(i);
+                                          } else {
+                                            _diasSeleccionados.remove(i);
+                                          }
+                                        });
+                                      },
+                                selectedColor: Colors.blue.shade600,
+                                backgroundColor: Colors.blue.shade50,
+                                elevation: checked ? 2 : 0,
+                                disabledColor: Colors.grey.shade200,
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Horas
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => _pickHoraPersonalizada(isInicio: true),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: InputDecorator(
+                                    decoration: InputDecoration(
+                                      labelText: 'Hora inicio',
+                                      filled: true,
+                                      fillColor: Colors.blue.shade50,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      suffixIcon: Icon(Icons.access_time, color: Colors.blue.shade400),
+                                    ),
+                                    child: Text(
+                                      _horaInicio != null
+                                          ? _formatTime(_horaInicio)
+                                          : 'Selecciona',
+                                      style: TextStyle(
+                                        color: Colors.blue.shade900,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => _pickHoraPersonalizada(isInicio: false),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: InputDecorator(
+                                    decoration: InputDecoration(
+                                      labelText: 'Hora fin',
+                                      filled: true,
+                                      fillColor: Colors.blue.shade50,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      suffixIcon: Icon(Icons.access_time, color: Colors.blue.shade400),
+                                    ),
+                                    child: Text(
+                                      _horaFin != null
+                                          ? _formatTime(_horaFin)
+                                          : 'Selecciona',
+                                      style: TextStyle(
+                                        color: Colors.blue.shade900,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Nombre turno
+                          TextFormField(
+                            controller: _nombreTurnoCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Nombre turno (opcional)',
+                              filled: true,
+                              fillColor: Colors.blue.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Margen antes
+                          TextFormField(
+                            controller: _margenCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Margen minutos antes (entrada)',
+                              filled: true,
+                              fillColor: Colors.blue.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              helperText: 'Minutos antes permitidos para fichar (p. ej. 10)',
+                            ),
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            validator: (val) {
+                              if (val == null || val.isEmpty) return "Obligatorio";
+                              final n = int.tryParse(val);
+                              if (n == null || n < 0) return "Debe ser número positivo";
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Margen después
+                          TextFormField(
+                            controller: _margenDespuesCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Margen minutos después (entrada)',
+                              filled: true,
+                              fillColor: Colors.blue.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              helperText: 'Minutos después permitidos para fichar (p. ej. 30)',
+                            ),
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            validator: (val) {
+                              if (val == null || val.isEmpty) return "Obligatorio";
+                              final n = int.tryParse(val);
+                              if (n == null || n < 0) return "Debe ser número positivo";
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 32),
+
+                          // Botón acción
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: Icon(isEditing ? Icons.save : Icons.add, size: 20),
+                              label: Text(
+                                isEditing ? 'Guardar cambios' : 'Crear horarios',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                              ),
+                              onPressed: _isFormValid() ? _guardar : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 4,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => _dniEmpleadoSeleccionado = value),
-                validator: (value) => value == null ? 'Selecciona un empleado' : null,
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<int>(
-                decoration: const InputDecoration(
-                  labelText: 'Día de la semana',
-                  border: OutlineInputBorder(),
-                ),
-                value: _diaSemana,
-                items: List.generate(
-                  7,
-                  (index) => DropdownMenuItem(
-                    value: index,
-                    child: Text(_diasSemana[index]),
+                    ),
                   ),
-                ),
-                onChanged: (v) => setState(() => _diaSemana = v ?? 0),
-              ),
-              const SizedBox(height: 12),
-
-              InkWell(
-                onTap: () => _pickHoraPersonalizada(isInicio: true),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Hora inicio',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.access_time),
+                  // Cerrar arriba a la derecha
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 28),
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: 'Cerrar',
+                    ),
                   ),
-                  child: Text(_horaInicio != null ? _formatTime(_horaInicio) : 'Seleccionar hora'),
-                ),
+                ],
               ),
-              const SizedBox(height: 12),
-
-              InkWell(
-                onTap: () => _pickHoraPersonalizada(isInicio: false),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Hora fin',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.access_time),
-                  ),
-                  child: Text(_horaFin != null ? _formatTime(_horaFin) : 'Seleccionar hora'),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _nombreTurnoCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre turno (opcional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (!_formKey.currentState!.validate()) return;
-                    if (_horaInicio == null || _horaFin == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Selecciona hora inicio y hora fin')),
-                      );
-                      return;
-                    }
-                    final inicioMinutos = _horaInicio!.hour * 60 + _horaInicio!.minute;
-                    final finMinutos = _horaFin!.hour * 60 + _horaFin!.minute;
-                    if (inicioMinutos >= finMinutos) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('La hora de inicio debe ser anterior a la de fin')),
-                      );
-                      return;
-                    }
-                    final nuevoHorario = HorarioEmpleado(
-                      id: widget.horarioExistente?.id,
-                      dniEmpleado: _dniEmpleadoSeleccionado!,
-                      cifEmpresa: widget.cifEmpresa,
-                      diaSemana: _diaSemana,
-                      horaInicio: _formatTime(_horaInicio),
-                      horaFin: _formatTime(_horaFin),
-                      nombreTurno: _nombreTurnoCtrl.text.trim(),
-                    );
-                    widget.onSubmit(nuevoHorario);
-                  },
-                  child: Text(isEditing ? 'Guardar cambios' : 'Crear horario'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1705,6 +1980,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   }
 }
 
+// Puedes dejar tu TimePicker tal cual:
 class _TimePickerWheel extends StatefulWidget {
   final int initialHour;
   final int initialMinute;
@@ -1745,7 +2021,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final wheelDiameter = (screenWidth - 80) / 2; // Ajusta según espacios
+    final wheelDiameter = (screenWidth - 80) / 2;
     const TextStyle textStyle = TextStyle(fontSize: 32);
 
     return Container(
