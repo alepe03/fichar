@@ -1,24 +1,25 @@
-/// Modelo de datos para un empleado de la empresa.
-/// Representa la información básica y de control de acceso de cada empleado.
 class Empleado {
-  final String usuario;         // Identificador único del usuario (login)
-  final String cifEmpresa;      // CIF de la empresa a la que pertenece
-  final String? direccion;      // Dirección del empleado (opcional)
-  final String? poblacion;      // Población/ciudad (opcional)
-  final String? codigoPostal;   // Código postal (opcional)
-  final String? telefono;       // Teléfono de contacto (opcional)
-  final String? email;          // Email del empleado (opcional)
-  final String? nombre;         // Nombre completo (opcional)
-  final String? dni;            // DNI/NIF del empleado (opcional)
-  final String? rol;            // Rol o perfil (admin, user, etc.) (opcional)
-  final String? passwordHash;   // Hash de la contraseña (opcional)
-  final int puedeLocalizar;     // 1=puede ser localizado, 0=no (por privacidad)
-  final int activo;             // 1=activo, 0=de baja
+  final String usuario;
+  final String cifEmpresa;
+  final int? id;            // Nuevo
+  final String? pinFichaje; // Nuevo
+  final String? direccion;
+  final String? poblacion;
+  final String? codigoPostal;
+  final String? telefono;
+  final String? email;
+  final String? nombre;
+  final String? dni;
+  final String? rol;
+  final String? passwordHash;
+  final int puedeLocalizar;
+  final int activo;
 
-  /// Constructor principal
   Empleado({
     required this.usuario,
     required this.cifEmpresa,
+    this.id,
+    this.pinFichaje,
     this.direccion,
     this.poblacion,
     this.codigoPostal,
@@ -38,17 +39,19 @@ class Empleado {
     return Empleado(
       usuario: parts.length > 0 ? parts[0] : '',
       cifEmpresa: parts.length > 1 ? parts[1] : '',
-      direccion: parts.length > 2 && parts[2].isNotEmpty ? parts[2] : null,
-      poblacion: parts.length > 3 && parts[3].isNotEmpty ? parts[3] : null,
-      codigoPostal: parts.length > 4 && parts[4].isNotEmpty ? parts[4] : null,
-      telefono: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null,
-      email: parts.length > 6 && parts[6].isNotEmpty ? parts[6] : null,
-      nombre: parts.length > 7 && parts[7].isNotEmpty ? parts[7] : null,
-      dni: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
-      rol: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
-      passwordHash: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
-      puedeLocalizar: parts.length > 11 && parts[11].isNotEmpty ? int.tryParse(parts[11]) ?? 0 : 0,
-      activo: parts.length > 12 && parts[12].isNotEmpty ? int.tryParse(parts[12]) ?? 1 : 1,
+      id: parts.length > 2 && parts[2].isNotEmpty ? int.tryParse(parts[2]) : null,
+      pinFichaje: parts.length > 3 && parts[3].isNotEmpty ? parts[3] : null,
+      direccion: parts.length > 4 && parts[4].isNotEmpty ? parts[4] : null,
+      poblacion: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null,
+      codigoPostal: parts.length > 6 && parts[6].isNotEmpty ? parts[6] : null,
+      telefono: parts.length > 7 && parts[7].isNotEmpty ? parts[7] : null,
+      email: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
+      nombre: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
+      dni: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
+      rol: parts.length > 11 && parts[11].isNotEmpty ? parts[11] : null,
+      passwordHash: parts.length > 12 && parts[12].isNotEmpty ? parts[12] : null,
+      puedeLocalizar: parts.length > 13 && parts[13].isNotEmpty ? int.tryParse(parts[13]) ?? 0 : 0,
+      activo: parts.length > 14 && parts[14].isNotEmpty ? int.tryParse(parts[14]) ?? 1 : 1,
     );
   }
 
@@ -57,6 +60,8 @@ class Empleado {
     return Empleado(
       usuario: map['usuario']?.toString() ?? '',
       cifEmpresa: map['cif_empresa']?.toString() ?? '',
+      id: map['id'] != null ? int.tryParse(map['id'].toString()) : null,
+      pinFichaje: map['pin_fichaje']?.toString(),
       direccion: map['direccion']?.toString(),
       poblacion: map['poblacion']?.toString(),
       codigoPostal: map['codigo_postal']?.toString(),
@@ -76,6 +81,8 @@ class Empleado {
     return {
       'usuario': usuario,
       'cif_empresa': cifEmpresa,
+      'id': id,
+      'pin_fichaje': pinFichaje,
       'direccion': direccion,
       'poblacion': poblacion,
       'codigo_postal': codigoPostal,
@@ -90,10 +97,11 @@ class Empleado {
     };
   }
 
-  /// Permite crear una copia del empleado con algunos campos modificados
   Empleado copyWith({
     String? usuario,
     String? cifEmpresa,
+    int? id,
+    String? pinFichaje,
     String? direccion,
     String? poblacion,
     String? codigoPostal,
@@ -109,6 +117,8 @@ class Empleado {
     return Empleado(
       usuario: usuario ?? this.usuario,
       cifEmpresa: cifEmpresa ?? this.cifEmpresa,
+      id: id ?? this.id,
+      pinFichaje: pinFichaje ?? this.pinFichaje,
       direccion: direccion ?? this.direccion,
       poblacion: poblacion ?? this.poblacion,
       codigoPostal: codigoPostal ?? this.codigoPostal,

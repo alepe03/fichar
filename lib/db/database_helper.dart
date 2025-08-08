@@ -27,7 +27,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       dbPath,
-      version: 8, // ¡Actualiza aquí si cambias la estructura!
+      version: 10, // <-- ¡IMPORTANTE! Ahora versión 10
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -40,11 +40,13 @@ class DatabaseHelper {
   Future _createDB(Database db, int version) async {
     print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
 
-    // Tabla de empleados
+    // Tabla de empleados (ahora con id y pin_fichaje)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
         usuario TEXT NOT NULL,
         cif_empresa TEXT NOT NULL,
+        id INTEGER,
+        pin_fichaje TEXT,
         direccion TEXT,
         poblacion TEXT,
         codigo_postal TEXT,
@@ -96,10 +98,11 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de registros históricos de fichajes
+    // Tabla de registros históricos de fichajes (ahora con uuid)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT UNIQUE NOT NULL,
         cif_empresa TEXT,
         usuario TEXT,
         fecha_entrada TEXT NOT NULL,
@@ -178,6 +181,25 @@ class DatabaseHelper {
         print('[DEBUG][DatabaseHelper] Columna margen_entrada_despues añadida a horarios_empleado');
       } catch (e) {
         print('[DatabaseHelper][Upgrade] Error añadiendo columna margen_entrada_despues: $e');
+      }
+    }
+    // MIGRACIÓN A V9: Añade columnas id y pin_fichaje a empleados si no existían
+    if (oldVersion < 9) {
+      try {
+        await db.execute('ALTER TABLE empleados ADD COLUMN id INTEGER;');
+        await db.execute('ALTER TABLE empleados ADD COLUMN pin_fichaje TEXT;');
+        print('[DEBUG][DatabaseHelper] Columnas id y pin_fichaje añadidas a empleados');
+      } catch (e) {
+        print('[DatabaseHelper][Upgrade] Error añadiendo columnas id/pin_fichaje: $e');
+      }
+    }
+    // MIGRACIÓN A V10: Añade columna uuid a historico
+    if (oldVersion < 10) {
+      try {
+        await db.execute('ALTER TABLE historico ADD COLUMN uuid TEXT UNIQUE;');
+        print('[DEBUG][DatabaseHelper] Columna uuid añadida a historico');
+      } catch (e) {
+        print('[DatabaseHelper][Upgrade] Error añadiendo columna uuid: $e');
       }
     }
   }

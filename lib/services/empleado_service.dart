@@ -98,8 +98,8 @@ class EmpleadoService {
     }
   }
 
-  // Inserta un empleado en la API (alta remota)
-  static Future<String> insertarEmpleadoRemoto({
+  // Inserta un empleado en la API (alta remota) y retorna también el PIN e ID generado
+  static Future<Map<String, dynamic>> insertarEmpleadoRemoto({
     required Empleado empleado,
     required String token,
   }) async {
@@ -139,7 +139,18 @@ class EmpleadoService {
         throw Exception(
             'No se puede crear el empleado: se ha alcanzado el límite de empleados activos permitidos para la empresa.');
       } else if (bodyResp.startsWith('OK;')) {
-        return bodyResp;
+        // Buscar ID y PIN en la respuesta tipo "OK; Empleado insertado; ID=3; PIN=0833"
+        final idReg = RegExp(r'ID=(\d+)');
+        final pinReg = RegExp(r'PIN=(\d{4})');
+        final id = idReg.firstMatch(bodyResp)?.group(1);
+        final pin = pinReg.firstMatch(bodyResp)?.group(1);
+
+        return {
+          'ok': true,
+          'mensaje': bodyResp,
+          'id': id,
+          'pin': pin,
+        };
       } else if (bodyResp.startsWith('ERROR;')) {
         throw Exception(bodyResp);
       } else {
@@ -150,7 +161,7 @@ class EmpleadoService {
     }
   }
 
-  // Actualiza un empleado en la API (no enviar password si está vacía)
+  // Actualiza un empleado en la API (ahora admite cambiar pin_fichaje si se lo pasas en el modelo)
   static Future<String> actualizarEmpleadoRemoto({
     required Empleado empleado,
     required String usuarioOriginal,
@@ -178,6 +189,11 @@ class EmpleadoService {
     // Agregar password solo si no es null ni vacía
     if (empleado.passwordHash != null && empleado.passwordHash!.isNotEmpty) {
       body['password_hash'] = empleado.passwordHash!;
+    }
+    // Permitir actualizar el PIN si está presente
+    if ((empleado as dynamic).pinFichaje != null &&
+        (empleado as dynamic).pinFichaje.toString().isNotEmpty) {
+      body['pin_fichaje'] = (empleado as dynamic).pinFichaje.toString();
     }
 
     final response = await http.post(

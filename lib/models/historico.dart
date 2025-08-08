@@ -3,6 +3,7 @@
 
 class Historico {
   final int id;                    // ID en la base de datos local
+  final String uuid;               // UUID único global (sin duplicados)
   final String? cifEmpresa;        // CIF de la empresa
   final String? usuario;           // Usuario que ficha
   final String fechaEntrada;       // Fecha/hora de entrada (siempre tiene valor)
@@ -14,13 +15,13 @@ class Historico {
   final String? dniEmpleado;       // DNI del empleado (opcional)
   final String? idSucursal;        // ID de la sucursal (opcional)
   final bool sincronizado;         // Indica si se envió a la nube
-
   final double? latitud;           // Latitud del fichaje (opcional)
   final double? longitud;          // Longitud del fichaje (opcional)
 
   // Constructor principal
   Historico({
     required this.id,
+    required this.uuid,
     required this.fechaEntrada,
     this.cifEmpresa,
     this.usuario,
@@ -40,6 +41,7 @@ class Historico {
   factory Historico.fromMap(Map<String, Object?> map) {
     return Historico(
       id: int.tryParse(map['id']?.toString() ?? '') ?? 0,
+      uuid: map['uuid']?.toString() ?? '', // UUID global (¡siempre presente!)
       cifEmpresa: map['cif_empresa']?.toString().isNotEmpty == true ? map['cif_empresa']?.toString() : null,
       usuario: map['usuario']?.toString().isNotEmpty == true ? map['usuario']?.toString() : null,
       fechaEntrada: map['fecha_entrada']?.toString() ?? '',
@@ -73,9 +75,10 @@ class Historico {
       nombreEmpleado: parts.length > 8 && parts[8].isNotEmpty ? parts[8] : null,
       dniEmpleado: parts.length > 9 && parts[9].isNotEmpty ? parts[9] : null,
       idSucursal: parts.length > 10 && parts[10].isNotEmpty ? parts[10] : null,
-      sincronizado: true,
       latitud: parts.length > 11 && parts[11].isNotEmpty ? double.tryParse(parts[11]) : null,
       longitud: parts.length > 12 && parts[12].isNotEmpty ? double.tryParse(parts[12]) : null,
+      uuid: parts.length > 13 && parts[13].isNotEmpty ? parts[13] : '', // <--- UUID desde CSV
+      sincronizado: true,
     );
   }
 
@@ -83,6 +86,7 @@ class Historico {
   Map<String, dynamic> toMap() {
     return {
       'id'               : id,
+      'uuid'             : uuid,
       'cif_empresa'      : cifEmpresa,
       'usuario'          : usuario,
       'fecha_entrada'    : fechaEntrada,
@@ -102,6 +106,7 @@ class Historico {
   /// Para guardar en SQLite (sin id, para inserciones)
   Map<String, dynamic> toDbMap() {
     return {
+      'uuid'             : uuid,
       'cif_empresa'      : cifEmpresa,
       'usuario'          : usuario,
       'fecha_entrada'    : fechaEntrada,
@@ -124,6 +129,7 @@ extension HistoricoPhp on Historico {
   /// Convierte el fichaje a un mapa solo con los campos necesarios para la API PHP
   Map<String, String> toPhpBody() {
     final map = {
+      'uuid'             : uuid, // UUID siempre se envía
       'cif_empresa'      : cifEmpresa      ?? '',
       'usuario'          : usuario         ?? '',
       'fecha_entrada'    : fechaEntrada,   // SIEMPRE TIENE VALOR

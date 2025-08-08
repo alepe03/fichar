@@ -2,8 +2,8 @@ import '../models/historico.dart';
 import '../db/database_helper.dart';
 import 'package:http/http.dart' as http;
 import 'package:csv/csv.dart';
+import 'package:sqflite/sqflite.dart'; // Necesario para ConflictAlgorithm
 
-/// Función auxiliar para obtener el primer entero de la consulta SQL
 int? firstIntValue(List<Map<String, Object?>> results) {
   if (results.isEmpty) return null;
   final value = results.first.values.first;
@@ -12,12 +12,9 @@ int? firstIntValue(List<Map<String, Object?>> results) {
   return null;
 }
 
-/// Servicio para gestionar el histórico de fichajes (local y remoto)
 class HistoricoService {
-  // Evita llamadas concurrentes de sincronización
   static bool _syncInProgress = false;
 
-  /// Guarda un nuevo fichaje en la base de datos local SQLite.
   static Future<int> guardarFichajeLocal(Historico historico) async {
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Intentando guardar: ${historico.toMap()}');
     final id = await DatabaseHelper.instance.insertHistorico(historico);
@@ -25,7 +22,6 @@ class HistoricoService {
     return id;
   }
 
-  /// Guarda un fichaje en la nube (MySQL a través de PHP API)
   static Future<bool> guardarFichajeRemoto(
     Historico historico,
     String token,
@@ -43,13 +39,22 @@ class HistoricoService {
     final response = await http.post(url, body: body);
     print('[DEBUG][guardarFichajeRemoto] STATUS: ${response.statusCode}, RESPUESTA: ${response.body}');
 
-    if (response.statusCode != 200 || !response.body.startsWith('OK')) {
+    if (response.statusCode != 200) {
+      throw Exception('Error guardando fichaje en la nube: ${response.body}');
+    }
+
+    // <-- NUEVO: detecta duplicado y NO reintentes, márcalo como sincronizado!
+    if (response.body.contains('DUPLICADO')) {
+      print('[SYNC] El UUID ya existe en la nube, se omite el reintento.');
+      return true; // Se considera sincronizado aunque sea duplicado
+    }
+
+    if (!response.body.startsWith('OK')) {
       throw Exception('Error guardando fichaje en la nube: ${response.body}');
     }
     return true;
   }
 
-  /// Reintentos con backoff exponencial para fallos transitorios
   static Future<bool> _tryRemotoConRetry(
     Historico h,
     String token,
@@ -63,7 +68,8 @@ class HistoricoService {
       try {
         return await guardarFichajeRemoto(h, token, baseUrl, bd);
       } catch (e) {
-        print('[WARN][_tryRemotoConRetry] Intento ${i + 1} fallido para ID ${h.id}: $e');
+        print('[WARN][_tryRemotoConRetry] Intento ${i + 1} fallido para UUID ${h.uuid}: $e');
+        // Si el mensaje es DUPLICADO, NO reintentes (ya lo cubre guardarFichajeRemoto devolviendo true)
         if (i == maxRetries - 1) rethrow;
         await Future.delayed(delay);
         delay *= 2;
@@ -72,7 +78,6 @@ class HistoricoService {
     return false;
   }
 
-  /// (Opcional) Obtener todos los fichajes de un usuario (local)
   static Future<List<Historico>> obtenerFichajesUsuario(
     String usuario,
     String cifEmpresa,
@@ -89,8 +94,6 @@ class HistoricoService {
     return maps.map((map) => Historico.fromMap(map)).toList();
   }
 
-  /// Sincroniza los fichajes pendientes guardados localmente.
-  /// Devuelve el número de registros sincronizados con éxito.
   static Future<int> sincronizarPendientes(
     String token,
     String baseUrl,
@@ -108,18 +111,18 @@ class HistoricoService {
       print('🗒️ Pendientes encontradas: ${pendientes.length}');
 
       for (final h in pendientes) {
-        print('→ Intentando enviar ID ${h.id}');
+        print('→ Intentando enviar UUID ${h.uuid}');
         try {
           final ok = await _tryRemotoConRetry(h, token, baseUrl, nombreBD);
           if (ok) {
             await DatabaseHelper.instance.actualizarSincronizado(h.id, true);
-            print('   ✅ ID ${h.id} marcado como sync');
+            print('   ✅ UUID ${h.uuid} marcado como sync');
             syncedCount++;
           } else {
-            print('   ⚠️ ID ${h.id} no recibió OK del servidor');
+            print('   ⚠️ UUID ${h.uuid} no recibió OK del servidor');
           }
         } catch (e) {
-          print('   ❌ Error en ID ${h.id}: $e');
+          print('   ❌ Error en UUID ${h.uuid}: $e');
         }
       }
 
@@ -130,7 +133,6 @@ class HistoricoService {
     }
   }
 
-  /// Sincroniza TODO el histórico desde la nube y actualiza la base local
   static Future<void> sincronizarHistoricoCompleto(
     String token,
     String baseUrl,
@@ -161,7 +163,12 @@ class HistoricoService {
     }
 
     final db = await DatabaseHelper.instance.database;
-    await db.delete('historico', where: 'cif_empresa = ?', whereArgs: [nombreBD]);
+
+    // Sube primero los pendientes antes de borrar (muy recomendable)
+    await sincronizarPendientes(token, baseUrl, nombreBD);
+
+    // Borra solo los fichajes sincronizados para NO perder los locales aún no subidos
+    await db.delete('historico', where: 'sincronizado = 1 AND cif_empresa = ?', whereArgs: [nombreBD]);
 
     for (var row in csvTable) {
       if (row.length < 13) {
@@ -187,11 +194,16 @@ class HistoricoService {
         'longitud': row[12] != null && row[12].toString().isNotEmpty
             ? double.tryParse(row[12].toString())
             : null,
+        'uuid': row.length > 13 && row[13].toString().isNotEmpty ? row[13].toString() : '', // <--- UUID desde CSV
         'sincronizado': 1,
       };
 
       print('[DEBUG] Insertando fila: $data');
-      await db.insert('historico', data);
+      await db.insert(
+        'historico',
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace, // ¡¡IMPORTANTE para NO duplicar!!
+      );
     }
 
     final count = firstIntValue(

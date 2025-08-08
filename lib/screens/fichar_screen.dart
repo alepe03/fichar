@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:fichar/screens/login_empresa_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:uuid/uuid.dart';
 
 import '../config.dart';
 import '../models/historico.dart';
@@ -47,7 +49,14 @@ Future<Position?> obtenerPosicion() async {
 }
 
 class FicharScreen extends StatefulWidget {
-  const FicharScreen({Key? key}) : super(key: key);
+  final bool esMultiFichaje; // <--- NUEVO
+  final bool desdeLoginEmpresa; // <-- NUEVO parámetro para controlar la navegación atrás
+
+  const FicharScreen({
+    Key? key,
+    this.esMultiFichaje = false,
+    this.desdeLoginEmpresa = false,
+  }) : super(key: key);
 
   @override
   State<FicharScreen> createState() => _FicharScreenState();
@@ -62,7 +71,7 @@ class _FicharScreenState extends State<FicharScreen> {
   bool _entradaEnProceso = false;
   bool _salidaEnProceso = false;
 
-  bool _loading = false; // <--- Controla overlay de carga general
+  bool _loading = false;
 
   late String cifEmpresa;
   late String token;
@@ -72,7 +81,7 @@ class _FicharScreenState extends State<FicharScreen> {
   late String idSucursal;
   String vaUltimaAccion = '';
 
-  int puedeLocalizar = 0; // Control permiso para localizar (0=no,1=sí)
+  int puedeLocalizar = 0;
 
   final ValueNotifier<Duration> _tiempoTrabajadoNotifier = ValueNotifier(Duration.zero);
   DateTime? _horaEntrada;
@@ -85,6 +94,8 @@ class _FicharScreenState extends State<FicharScreen> {
   List<HorarioEmpleado> _tramosHoy = [];
   bool _cargandoHorarios = true;
 
+  Timer? _timerSalidaMultiFichaje;
+
   String _keyUltimaAccion(String usuario, String cifEmpresa) =>
       'ultimo_tipo_fichaje_${usuario}_$cifEmpresa';
 
@@ -94,9 +105,19 @@ class _FicharScreenState extends State<FicharScreen> {
   @override
   void initState() {
     super.initState();
+    print('[DEBUG] FicharScreen initState disparado');
     _loadConfig().then((_) {
       _cargarHorariosDeHoy();
     });
+  }
+
+  @override
+  void dispose() {
+    txtObservaciones.dispose();
+    _timer?.cancel();
+    _tiempoTrabajadoNotifier.dispose();
+    _timerSalidaMultiFichaje?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadConfig() async {
@@ -148,6 +169,7 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   void _calcularEstadoBotones() {
+    print('[DEBUG] vaUltimaAccion al calcular: $vaUltimaAccion');
     entradaHabilitada = vaUltimaAccion != 'Entrada';
     salidaHabilitada = vaUltimaAccion == 'Entrada';
     setState(() {});
@@ -196,6 +218,23 @@ class _FicharScreenState extends State<FicharScreen> {
     setState(() {});
   }
 
+  // --- Modo Multi-Fichaje: salir tras 5s ---
+  void _autoSalirTrasFichajeExitoso() {
+    if (!widget.esMultiFichaje) return;
+    _timerSalidaMultiFichaje?.cancel();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fichaje realizado, volviendo a pantalla de inicio...')),
+    );
+    _timerSalidaMultiFichaje = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const EmpresaLoginScreen()),
+          (route) => false,
+        );
+      }
+    });
+  }
+
   Future<void> _registrarFichaje(
     String tipo, {
     String? incidenciaCodigo,
@@ -227,8 +266,12 @@ class _FicharScreenState extends State<FicharScreen> {
       pos = null;
     }
 
+    final uuid = Uuid();
+    final String uuidFichaje = uuid.v4();
+
     final historico = Historico(
       id: 0,
+      uuid: uuidFichaje,
       cifEmpresa: cifEmpresa,
       usuario: usuario,
       fechaEntrada: tipo == 'Salida' ? '' : fechaActual,
@@ -266,10 +309,12 @@ class _FicharScreenState extends State<FicharScreen> {
     } else if (tipo != 'IncidenciaSolo') {
       await _setUltimaAccion(tipoParaGuardar);
     }
+
+    _autoSalirTrasFichajeExitoso();
   }
 
   Future<void> _procesarFichajeConLoading(Future<void> Function() funcion) async {
-    if (_loading) return; // evitar dobles llamadas
+    if (_loading) return;
     setState(() => _loading = true);
     try {
       await funcion();
@@ -279,6 +324,7 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   void _onEntrada() {
+    print('[DEBUG] _onEntrada llamado');
     if (_entradaEnProceso) return;
     _entradaEnProceso = true;
     _procesarFichajeConLoading(() => _registrarFichaje('Entrada')).then((_) {
@@ -287,6 +333,7 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   void _onSalida() {
+    print('[DEBUG] _onSalida llamado');
     if (_salidaEnProceso) return;
     _salidaEnProceso = true;
     _procesarFichajeConLoading(() => _registrarFichaje('Salida')).then((_) {
@@ -295,33 +342,22 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   bool puedeFicharAhora() {
-  if (_cargandoHorarios) return false;
-
-  if (_tramosHoy.isEmpty) {
-    // Si no hay tramos, permitimos fichar siempre
-    return true;
-  }
-
-  final ahora = TimeOfDay.now();
-
-  for (final tramo in _tramosHoy) {
-    final inicio = _parseTime(tramo.horaInicio);
-
-    // Nuevo: márgenes personalizados
-    final margenAntes = tramo.margenEntradaAntes; // minutos antes permitidos
-    final margenDespues = tramo.margenEntradaDespues ?? 0; // minutos después permitidos (usa 0 si no existe)
-
-    final minutosInicio = inicio.hour * 60 + inicio.minute - margenAntes;
-    final minutosFin = inicio.hour * 60 + inicio.minute + margenDespues;
-
-    final minutosAhora = ahora.hour * 60 + ahora.minute;
-
-    if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
-      return true;
+    if (_cargandoHorarios) return false;
+    if (_tramosHoy.isEmpty) return true;
+    final ahora = TimeOfDay.now();
+    for (final tramo in _tramosHoy) {
+      final inicio = _parseTime(tramo.horaInicio);
+      final margenAntes = tramo.margenEntradaAntes;
+      final margenDespues = tramo.margenEntradaDespues ?? 0;
+      final minutosInicio = inicio.hour * 60 + inicio.minute - margenAntes;
+      final minutosFin = inicio.hour * 60 + inicio.minute + margenDespues;
+      final minutosAhora = ahora.hour * 60 + ahora.minute;
+      if (minutosAhora >= minutosInicio && minutosAhora <= minutosFin) {
+        return true;
+      }
     }
+    return false;
   }
-  return false;
-}
 
   TimeOfDay _parseTime(String timeStr) {
     final parts = timeStr.split(':');
@@ -351,12 +387,11 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   void _onIncidencia() async {
-    if (_loading) return; // bloquear mientras carga general
+    if (_loading) return;
     await _cargarIncidencias();
     txtObservaciones.clear();
     Incidencia? seleccionada;
     bool confirmado = false;
-
     bool _procesandoIncidencia = false;
 
     showDialog(
@@ -544,18 +579,22 @@ class _FicharScreenState extends State<FicharScreen> {
   }
 
   @override
-  void dispose() {
-    txtObservaciones.dispose();
-    _timer?.cancel();
-    _tiempoTrabajadoNotifier.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final ancho = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
+        leading: widget.desdeLoginEmpresa
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.blue),
+                tooltip: 'Volver',
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const EmpresaLoginScreen()),
+                    (route) => false,
+                  );
+                },
+              )
+            : null,
         title: const Text('Fichar', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
         backgroundColor: Colors.white,
         elevation: 0,

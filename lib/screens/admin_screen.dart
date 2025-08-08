@@ -1,12 +1,11 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
+import 'dart:typed_data';
 
 import '../models/empleado.dart';
 import '../models/historico.dart';
@@ -31,12 +30,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this); // 4 tabs ahora
+    _tabController = TabController(length: 4, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       setState(() => _isLoading = true);
       final provider = Provider.of<AdminProvider>(context, listen: false);
-      await provider.cargarDatosIniciales(); // carga empleados, historicos, incidencias
-      // Si quieres cargar horarios globales o por empleado, lo haces aquí también o en el tab
+      await provider.cargarDatosIniciales();
       setState(() => _isLoading = false);
     });
   }
@@ -59,7 +57,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Tab(text: 'Usuarios'),
             Tab(text: 'Fichajes'),
             Tab(text: 'Incidencias'),
-            Tab(text: 'Horarios'), // nuevo tab
+            Tab(text: 'Horarios'),
           ],
         ),
       ),
@@ -71,7 +69,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 UsuariosTab(),
                 FichajesTab(),
                 IncidenciasTab(),
-                HorariosTab(), // nuevo tab view
+                HorariosTab(),
               ],
             ),
     );
@@ -90,6 +88,64 @@ class UsuariosTab extends StatefulWidget {
 
 class _UsuariosTabState extends State<UsuariosTab> {
   FiltroEstado filtro = FiltroEstado.activos;
+
+  // === GENERACIÓN DEL QR Y PDF ===
+
+  Future<File> generarPdfQrEmpleado(Empleado emp) async {
+    final id = emp.id.toString();
+    final pin = emp.pinFichaje ?? '0000';
+    final qrData = '$id;$pin'; // <- QR en formato plano
+
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Text('QR de Fichaje', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 12),
+            pw.Text('Nombre: ${emp.nombre ?? ''}'),
+            pw.Text('Usuario: ${emp.usuario}'),
+            pw.Text('ID: $id'),
+            pw.SizedBox(height: 20),
+            pw.BarcodeWidget(
+              data: qrData,
+              barcode: pw.Barcode.qrCode(),
+              width: 180,
+              height: 180,
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Escanea este código con la app de fichaje para iniciar sesión.',
+              style: pw.TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+    final output = await getTemporaryDirectory();
+    final file = File("${output.path}/qr_fichaje_${emp.usuario}.pdf");
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  Future<void> _generarYMostrarQR(BuildContext context, Empleado emp) async {
+    try {
+      final file = await generarPdfQrEmpleado(emp);
+      await OpenFile.open(file.path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF con QR generado. Puedes enviarlo por email al empleado.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generando QR: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
 
   void _abrirDialogo(BuildContext context, AdminProvider provider, {Empleado? empleado}) {
     showDialog(
@@ -227,6 +283,14 @@ class _UsuariosTabState extends State<UsuariosTab> {
                                     }
                                   },
                                 ),
+                                // ==== Botón de QR ====
+                                IconButton(
+                                  icon: const Icon(Icons.qr_code, color: Colors.blueAccent),
+                                  tooltip: 'Generar QR y abrir PDF',
+                                  onPressed: () async {
+                                    await _generarYMostrarQR(context, emp);
+                                  },
+                                ),
                               ],
                             ),
                             onTap: () => _abrirDialogo(context, provider, empleado: emp),
@@ -259,7 +323,6 @@ class _UsuariosTabState extends State<UsuariosTab> {
   }
 }
 
-
 class _FormularioEmpleado extends StatefulWidget {
   final String cifEmpresa;
   final Empleado? empleadoExistente;
@@ -287,7 +350,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   late TextEditingController _dniCtrl;
   late TextEditingController _passwordCtrl;
 
-  final _roles = ['admin', 'supervisor', 'empleado'];
+  final _roles = ['admin', 'supervisor', 'empleado', 'terminal_fichaje'];
   String? _rolSeleccionado;
   bool _puedeLocalizar = false;
   bool _activo = true;
@@ -310,7 +373,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     _rolSeleccionado = emp?.rol;
     _puedeLocalizar = (emp?.puedeLocalizar ?? 0) == 1;
     _activo = (emp?.activo ?? 1) == 1;
-
     _usuarioOriginal = emp?.usuario ?? '';
   }
 
@@ -332,7 +394,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-
             // Usuario
             TextFormField(
               controller: _usuarioCtrl,
@@ -344,7 +405,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
             ),
             const SizedBox(height: 12),
-
             // Nombre
             TextFormField(
               controller: _nombreCtrl,
@@ -356,7 +416,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               validator: (v) => v == null || v.isEmpty ? 'Nombre obligatorio' : null,
             ),
             const SizedBox(height: 12),
-
             // Email
             TextFormField(
               controller: _emailCtrl,
@@ -368,7 +427,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 12),
-
             // Dirección
             TextFormField(
               controller: _direccionCtrl,
@@ -379,7 +437,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               ),
             ),
             const SizedBox(height: 12),
-
             // Población
             TextFormField(
               controller: _poblacionCtrl,
@@ -390,7 +447,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               ),
             ),
             const SizedBox(height: 12),
-
             // Código Postal
             TextFormField(
               controller: _codigoPostalCtrl,
@@ -402,7 +458,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
-
             // Teléfono
             TextFormField(
               controller: _telefonoCtrl,
@@ -414,7 +469,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 12),
-
             // DNI
             TextFormField(
               controller: _dniCtrl,
@@ -426,7 +480,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               validator: (v) => v == null || v.isEmpty ? 'DNI obligatorio' : null,
             ),
             const SizedBox(height: 12),
-
             // Contraseña
             TextFormField(
               controller: _passwordCtrl,
@@ -436,7 +489,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 prefixIcon: Icon(Icons.lock, color: kPrimaryBlue),
               ),
               obscureText: true,
-              enabled: !isEditing, // ✅ Deshabilitado si es edición
+              enabled: !isEditing,
               validator: (v) {
                 if (!isEditing && (v == null || v.isEmpty)) {
                   return 'Contraseña obligatoria';
@@ -445,7 +498,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               },
             ),
             const SizedBox(height: 12),
-
             // Rol
             DropdownButtonFormField<String>(
               decoration: InputDecoration(
@@ -463,7 +515,9 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                             ? 'Administrador'
                             : r == 'supervisor'
                                 ? 'Supervisor'
-                                : 'Empleado',
+                                : r == 'terminal_fichaje'
+                                    ? 'Terminal de fichaje'
+                                    : 'Empleado',
                       ),
                     ),
                   )
@@ -477,7 +531,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               validator: (v) => v == null ? 'Selecciona un rol' : null,
             ),
             const SizedBox(height: 12),
-
             // Switches
             SwitchListTile(
               title: const Text('Permitir localización'),
@@ -500,7 +553,6 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
               },
             ),
             const SizedBox(height: 24),
-
             // Botón Guardar
             SizedBox(
               width: double.infinity,
@@ -520,7 +572,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                         nombre: _nombreCtrl.text.trim(),
                         dni: _dniCtrl.text.trim(),
                         rol: _rolSeleccionado,
-                        passwordHash: isEditing ? '' : _passwordCtrl.text.trim(), // ✅ Solo si es nuevo
+                        passwordHash: isEditing ? '' : _passwordCtrl.text.trim(),
                         puedeLocalizar: _puedeLocalizar ? 1 : 0,
                         activo: _activo ? 1 : 0,
                       ),

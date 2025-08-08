@@ -5,6 +5,8 @@
 <dict>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>Necesitamos acceder a tu ubicación para registrar el lugar del fichaje.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Necesitamos acceder a tu cámara para escanear códigos QR y fichar correctamente.</string>
   <key>CFBundleDevelopmentRegion</key>
   <string>$(DEVELOPMENT_LANGUAGE)</string>
   <key>CFBundleDisplayName</key>
@@ -62,6 +64,5 @@
     <string>fetch</string>
     <string>remote-notification</string>
   </array>
-
 </dict>
 </plist>

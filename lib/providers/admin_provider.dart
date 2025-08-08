@@ -81,23 +81,26 @@ class AdminProvider extends ChangeNotifier {
   }
 
   Future<String?> addEmpleado(Empleado empleado) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    try {
-      final respuesta = await EmpleadoService.insertarEmpleadoRemoto(
-        empleado: empleado,
-        token: token,
-      );
-      if (respuesta.startsWith("OK")) {
-        await sincronizarEmpleadosCompleto();
-        return null;
-      } else {
-        return respuesta;
-      }
-    } catch (e) {
-      return e.toString().replaceFirst('Exception: ', '');
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token') ?? '';
+  try {
+    final respuesta = await EmpleadoService.insertarEmpleadoRemoto(
+      empleado: empleado,
+      token: token,
+    );
+    if (respuesta['ok'] == true) {
+      await sincronizarEmpleadosCompleto();
+      // Si quieres usar el PIN generado, está en respuesta['pin']
+      // Puedes devolverlo, mostrarlo, lo que necesites.
+      return null;
+    } else {
+      return respuesta['mensaje']?.toString();
     }
+  } catch (e) {
+    return e.toString().replaceFirst('Exception: ', '');
   }
+}
+
 
   Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
     final prefs = await SharedPreferences.getInstance();

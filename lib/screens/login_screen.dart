@@ -15,6 +15,7 @@ import '../models/empleado.dart';
 import 'trivalle_screen.dart';
 import '../db/database_helper.dart';
 import '../services/empleado_service.dart';
+import 'login_empresa_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -114,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // 1. Sincronizar empleados antes del login local para datos frescos
     try {
       await EmpleadoService.sincronizarEmpleadosCompleto(
-        prefs.getString('token') ?? '123456.abcd', // Cambia por token válido si tienes
+        prefs.getString('token') ?? '123456.abcd',
         prefs.getString('baseUrl') ?? BASE_URL,
         cifSeleccionado!,
       );
@@ -196,19 +197,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _navegarSegunRol(Empleado usuarioFinal) async {
     final rol = usuarioFinal.rol?.toLowerCase() ?? '';
+    final prefs = await SharedPreferences.getInstance();
 
     if (rol == 'trivalle') {
+      await prefs.setBool('terminal_fichaje', false);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const AdminTrivalleScreen()),
       );
     } else if (rol == 'admin') {
+      await prefs.setBool('terminal_fichaje', false);
       final adminProvider = AdminProvider(usuarioFinal.cifEmpresa);
       await adminProvider.cargarDatosIniciales();
-
-      // Carga explícita de horarios tras datos iniciales
       await adminProvider.cargarHorariosEmpresa(usuarioFinal.cifEmpresa);
-
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -222,19 +223,25 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else if (rol == 'supervisor') {
+      await prefs.setBool('terminal_fichaje', false);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
             builder: (_) =>
                 SupervisorScreen(cifEmpresa: usuarioFinal.cifEmpresa)),
       );
+    } else if (rol == 'terminal_fichaje') {
+      await prefs.setBool('terminal_fichaje', true); // <-- Flag activo para terminal
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const EmpresaLoginScreen()),
+      );
     } else {
+      await prefs.setBool('terminal_fichaje', false);
       final adminProvider = AdminProvider(usuarioFinal.cifEmpresa);
       await adminProvider.cargarDatosIniciales();
-
-      // Carga explícita de horarios tras datos iniciales
       await adminProvider.cargarHorariosEmpresa(usuarioFinal.cifEmpresa);
-
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -271,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           child: StatefulBuilder(builder: (ctx2, setStateDialog) {
             return AlertDialog(
-              backgroundColor: const Color(0xFFEAEAEA), // Fondo gris claro
+              backgroundColor: const Color(0xFFEAEAEA),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Text(
                 "Cambiar contraseña",
@@ -379,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> {
       cursorColor: Colors.blue,
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.white, // Campos blancos para contraste
+        fillColor: Colors.white,
         labelText: label,
         labelStyle: const TextStyle(color: Colors.blue),
         prefixIcon: Icon(icon, color: Colors.blue),

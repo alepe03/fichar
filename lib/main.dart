@@ -22,6 +22,7 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart' show databaseFactor
 
 import 'screens/login_screen.dart';
 import 'screens/vcif_screen.dart';
+import 'screens/login_empresa_screen.dart';
 import 'providers/admin_provider.dart';
 
 /// ScrollBehavior que simula el comportamiento móvil (sin scrollbar visible)
@@ -37,11 +38,29 @@ class MobileScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
+Future<Widget> _obtenerPantallaInicial() async {
+  final prefs = await SharedPreferences.getInstance();
+  final cif = prefs.getString('cif_empresa');
+  final esTerminalFichaje = prefs.getBool('terminal_fichaje') ?? false;
+
+  if (cif?.isNotEmpty ?? false) {
+    if (esTerminalFichaje) {
+      // Si está marcado como terminal de fichaje, ir a la pantalla de fichar
+      return const EmpresaLoginScreen();
+    } else {
+      // Si no, login normal
+      return const LoginScreen();
+    }
+  } else {
+    // Si no hay CIF, mostrar pantalla de introducción de CIF
+    return const VCifScreen();
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ─── Configuración de SQLite según plataforma ──────────────────────────────────
-  // Selecciona la fábrica de base de datos adecuada según si es web, Windows, Linux o MacOS
+  // Configuración de SQLite según plataforma
   if (kIsWeb) {
     databaseFactory = databaseFactoryFfiWeb;
   } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -49,28 +68,25 @@ Future<void> main() async {
     databaseFactory = databaseFactoryFfi;
   }
 
-  // ─── Carga de configuración de sincronización ──────────────────────────────────
-  // Recupera token, baseUrl y nombreBD de SharedPreferences para usarlos en la sincronización
-  final prefs    = await SharedPreferences.getInstance();
-  final token    = prefs.getString('token')    ?? '';
-  final baseUrl  = prefs.getString('baseUrl')  ?? '';
+  // Carga configuración sincronización
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token') ?? '';
+  final baseUrl = prefs.getString('baseUrl') ?? '';
   final nombreBD = prefs.getString('nombreBD') ?? '';
 
-  // ─── Comprueba conexión real a Internet ────────────────────────────────────────
-  // Función auxiliar para comprobar si hay acceso real a Internet (no solo red local)
+  // Comprobar conexión real a internet
   Future<bool> _hasInternet() async {
     try {
       final resp = await http
-        .get(Uri.parse('https://www.google.com/generate_204'))
-        .timeout(Duration(seconds: 3));
+          .get(Uri.parse('https://www.google.com/generate_204'))
+          .timeout(const Duration(seconds: 3));
       return resp.statusCode == 204;
     } catch (_) {
       return false;
     }
   }
 
-  // ─── Chequeo inicial de red y sincronización ───────────────────────────────────
-  // Al arrancar, si hay red e Internet, intenta sincronizar los registros pendientes
+  // Sincronización inicial
   final initial = await Connectivity().checkConnectivity();
   debugPrint('🔍 Estado inicial de red: $initial');
   if (initial != ConnectivityResult.none && await _hasInternet()) {
@@ -86,8 +102,7 @@ Future<void> main() async {
     }
   }
 
-  // ─── Listener de cambios de conectividad ───────────────────────────────────────
-  // Escucha cambios de conectividad y, si se recupera Internet, intenta sincronizar
+  // Listener conectividad
   Connectivity().onConnectivityChanged.listen((status) async {
     debugPrint('🔔 Cambió conectividad: $status');
     if (status != ConnectivityResult.none && await _hasInternet()) {
@@ -110,34 +125,21 @@ Future<void> main() async {
 class FichadorApp extends StatelessWidget {
   const FichadorApp({super.key});
 
-  // Obtiene el CIF de la empresa guardado en SharedPreferences
-  Future<String?> _obtenerCifEmpresa() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('cif_empresa');
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Usa FutureBuilder para esperar a que SharedPreferences esté disponible
-    return FutureBuilder<String?>(
-      future: _obtenerCifEmpresa(),
+    return FutureBuilder<Widget>(
+      future: _obtenerPantallaInicial(),
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.done) {
-          final cif = snap.data;
-          // Si hay CIF, muestra la pantalla de login; si no, la de introducción de CIF
-          final home = (cif?.isNotEmpty ?? false)
-            ? const LoginScreen()
-            : const VCifScreen();
-
-          // MultiProvider para inyectar el AdminProvider con el CIF
+          final home = snap.data!;
           return MultiProvider(
             providers: [
-              ChangeNotifierProvider(create: (_) => AdminProvider(cif ?? '')),
+              ChangeNotifierProvider(create: (_) => AdminProvider('')),
             ],
             child: MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: ThemeData(
-                platform: TargetPlatform.android, // Fuerza apariencia Android
+                platform: TargetPlatform.android,
                 primaryColor: Colors.blue[800],
                 scaffoldBackgroundColor: Colors.white,
                 appBarTheme: const AppBarTheme(
@@ -173,13 +175,16 @@ class FichadorApp extends StatelessWidget {
                   ),
                 ),
               ),
-              scrollBehavior: MobileScrollBehavior(), // Quita scrollbar visible
-              home: home, // Pantalla principal según si hay CIF o no
-              routes: {'/login': (_) => const LoginScreen(), '/cif': (_) => const VCifScreen()},
+              scrollBehavior: MobileScrollBehavior(),
+              home: home,
+              routes: {
+                '/login': (_) => const LoginScreen(),
+                '/cif': (_) => const VCifScreen(),
+                '/empresaLogin': (_) => const EmpresaLoginScreen(),
+              },
             ),
           );
         }
-        // Indicador de carga mientras SharedPreferences abre
         return const MaterialApp(
           home: Scaffold(body: Center(child: CircularProgressIndicator())),
         );
