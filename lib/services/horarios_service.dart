@@ -14,7 +14,7 @@ List<HorarioEmpleado> parseHorariosCsv(String csvBody) {
   for (var line in lines) {
     if (line.trim().isEmpty) continue;
     try {
-      horarios.add(HorarioEmpleado.fromCsv(line)); // Incluye ambos márgenes
+      horarios.add(HorarioEmpleado.fromCsv(line)); // Ahora incluye horas_ordinarias y min
     } catch (e) {
       print('Error parseando línea CSV: $line\nError: $e');
     }
@@ -52,7 +52,11 @@ class HorariosService {
       final db = await DatabaseHelper.instance.database;
 
       print('Borrando horarios locales previos de $dniEmpleado');
-      await db.delete('horarios_empleado', where: 'dni_empleado = ? AND cif_empresa = ?', whereArgs: [dniEmpleado, cifEmpresa]);
+      await db.delete(
+        'horarios_empleado',
+        where: 'dni_empleado = ? AND cif_empresa = ?',
+        whereArgs: [dniEmpleado, cifEmpresa],
+      );
 
       for (var h in horarios) {
         print('Insertando horario en BD local: $h');
@@ -63,7 +67,11 @@ class HorariosService {
         );
       }
 
-      final mapas = await db.query('horarios_empleado', where: 'dni_empleado = ? AND cif_empresa = ?', whereArgs: [dniEmpleado, cifEmpresa]);
+      final mapas = await db.query(
+        'horarios_empleado',
+        where: 'dni_empleado = ? AND cif_empresa = ?',
+        whereArgs: [dniEmpleado, cifEmpresa],
+      );
       print('Horarios en BD local después de insertar:');
       for (var m in mapas) {
         print(m);
@@ -179,7 +187,11 @@ class HorariosService {
   // ======= Insertar Local =======
   static Future<int> insertarHorarioLocal(HorarioEmpleado horario) async {
     final db = await DatabaseHelper.instance.database;
-    return await db.insert('horarios_empleado', horario.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    return await db.insert(
+      'horarios_empleado',
+      horario.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   // ======= Actualizar Remoto =======

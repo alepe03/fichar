@@ -29,6 +29,9 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
   final _telefonoController = TextEditingController();
   final _codigoPostalController = TextEditingController();
   final _emailEmpresaController = TextEditingController();
+  // NUEVOS
+  final _cuotaController = TextEditingController();
+  final _observacionesController = TextEditingController();
 
   // Controllers para Admin
   final _adminUsuarioController = TextEditingController();
@@ -72,6 +75,8 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
       _telefonoController,
       _codigoPostalController,
       _emailEmpresaController,
+      _cuotaController,
+      _observacionesController,
       _adminUsuarioController,
       _adminNombreController,
       _adminDniController,
@@ -90,6 +95,12 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
     return regExp.hasMatch(cif);
   }
 
+  double? _parseCuota(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    return double.tryParse(s.replaceAll(',', '.'));
+  }
+
   void _limpiarCampos() {
     _cifController.clear();
     _empresaController.clear();
@@ -98,6 +109,9 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
     _telefonoController.clear();
     _codigoPostalController.clear();
     _emailEmpresaController.clear();
+    _cuotaController.clear();
+    _observacionesController.clear();
+
     _adminUsuarioController.clear();
     _adminNombreController.clear();
     _adminDniController.clear();
@@ -135,6 +149,11 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
             ? null
             : _emailEmpresaController.text.trim(),
         basedatos: null,
+        // NUEVOS
+        cuota: _parseCuota(_cuotaController.text),
+        observaciones: _observacionesController.text.trim().isEmpty
+            ? null
+            : _observacionesController.text.trim(),
       );
       final limiteUsuarios = int.parse(_limiteController.text.trim());
 
@@ -219,6 +238,11 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
     final bdCtrl = TextEditingController(text: empresa.basedatos ?? '');
     final limiteCtrl =
         TextEditingController(text: empresa.maxUsuarios?.toString() ?? '');
+    // NUEVOS
+    final cuotaCtrl = TextEditingController(
+        text: (empresa.cuota == null) ? '' : empresa.cuota!.toString().replaceAll('.', ','));
+    final observacionesCtrl =
+        TextEditingController(text: empresa.observaciones ?? '');
 
     showDialog(
       context: context,
@@ -227,7 +251,11 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
         content: SingleChildScrollView(
           child: Column(
             children: [
-              TextField(controller: cifCtrl, decoration: _inputStyle('CIF (no editable)', Icons.confirmation_num, Colors.grey), enabled: false),
+              TextField(
+                controller: cifCtrl,
+                decoration: _inputStyle('CIF (no editable)', Icons.confirmation_num, Colors.grey),
+                enabled: false,
+              ),
               const SizedBox(height: 8),
               TextField(controller: nombreCtrl, decoration: _inputStyle('Nombre', Icons.business, Colors.blue)),
               const SizedBox(height: 8),
@@ -242,6 +270,19 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
               TextField(controller: emailCtrl, decoration: _inputStyle('Email', Icons.email, Colors.blue)),
               const SizedBox(height: 8),
               TextField(controller: bdCtrl, decoration: _inputStyle('Base de Datos', Icons.storage, Colors.blue)),
+              const SizedBox(height: 8),
+              // NUEVOS
+              TextField(
+                controller: cuotaCtrl,
+                decoration: _inputStyle('Cuota (€)', Icons.euro, Colors.blue),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: observacionesCtrl,
+                maxLines: 3,
+                decoration: _inputStyle('Observaciones (interno)', Icons.notes, Colors.blue),
+              ),
             ],
           ),
         ),
@@ -261,6 +302,11 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
                 codigoPostal: cpCtrl.text.trim().isEmpty ? null : cpCtrl.text.trim(),
                 email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                 basedatos: bdCtrl.text.trim().isEmpty ? null : bdCtrl.text.trim(),
+                // NUEVOS
+                cuota: _parseCuota(cuotaCtrl.text),
+                observaciones: observacionesCtrl.text.trim().isEmpty
+                    ? null
+                    : observacionesCtrl.text.trim(),
               );
               try {
                 await EmpresaService.actualizarEmpresaRemoto(
@@ -268,15 +314,19 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
                   maxUsuarios: int.parse(limiteCtrl.text),
                   token: token,
                 );
-                Navigator.pop(context);
-                setState(() {}); // recarga la lista
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('✅ Empresa actualizada'), backgroundColor: Colors.green),
-                );
+                if (mounted) {
+                  Navigator.pop(context);
+                  setState(() {}); // recarga la lista
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('✅ Empresa actualizada'), backgroundColor: Colors.green),
+                  );
+                }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
+                  );
+                }
               }
             },
             child: const Text('Guardar'),
@@ -374,11 +424,34 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
               key: _formKeyEmpresa,
               child: Column(
                 children: [
-                  TextFormField(controller: _cifController, decoration: _inputStyle('CIF Empresa', Icons.confirmation_num, Colors.blue), maxLength: 9, textCapitalization: TextCapitalization.characters, validator: (v) { if (v == null || v.isEmpty) return 'Introduce el CIF'; if (!_cifValido(v)) return 'Formato CIF incorrecto'; return null; }),
+                  TextFormField(
+                    controller: _cifController,
+                    decoration: _inputStyle('CIF Empresa', Icons.confirmation_num, Colors.blue),
+                    maxLength: 9,
+                    textCapitalization: TextCapitalization.characters,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Introduce el CIF';
+                      if (!_cifValido(v)) return 'Formato CIF incorrecto';
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 16),
-                  TextFormField(controller: _empresaController, decoration: _inputStyle('Nombre Empresa', Icons.business, Colors.blue), validator: (v) => v == null || v.isEmpty ? 'Introduce el nombre' : null),
+                  TextFormField(
+                    controller: _empresaController,
+                    decoration: _inputStyle('Nombre Empresa', Icons.business, Colors.blue),
+                    validator: (v) => v == null || v.isEmpty ? 'Introduce el nombre' : null,
+                  ),
                   const SizedBox(height: 16),
-                  TextFormField(controller: _limiteController, decoration: _inputStyle('Límite Usuarios', Icons.people, Colors.blue), keyboardType: TextInputType.number, validator: (v) { if (v == null || v.isEmpty) return 'Introduce límite'; if (int.tryParse(v) == null || int.parse(v) <= 0) return 'Valor no válido'; return null; }),
+                  TextFormField(
+                    controller: _limiteController,
+                    decoration: _inputStyle('Límite Usuarios', Icons.people, Colors.blue),
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Introduce límite';
+                      if (int.tryParse(v) == null || int.parse(v) <= 0) return 'Valor no válido';
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 16),
                   TextFormField(controller: _direccionController, decoration: _inputStyle('Dirección (opcional)', Icons.place, Colors.blue)),
                   const SizedBox(height: 16),
@@ -387,6 +460,25 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
                   TextFormField(controller: _codigoPostalController, decoration: _inputStyle('Código Postal (opcional)', Icons.markunread_mailbox, Colors.blue), keyboardType: TextInputType.number),
                   const SizedBox(height: 16),
                   TextFormField(controller: _emailEmpresaController, decoration: _inputStyle('Email Empresa (opcional)', Icons.email, Colors.blue), keyboardType: TextInputType.emailAddress),
+                  const SizedBox(height: 16),
+                  // NUEVOS
+                  TextFormField(
+                    controller: _cuotaController,
+                    decoration: _inputStyle('Cuota (€) (opcional)', Icons.euro, Colors.blue),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      final d = _parseCuota(v);
+                      if (d == null || d < 0) return 'Cuota no válida';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _observacionesController,
+                    maxLines: 3,
+                    decoration: _inputStyle('Observaciones (interno, opcional)', Icons.notes, Colors.blue),
+                  ),
                 ],
               ),
             ),

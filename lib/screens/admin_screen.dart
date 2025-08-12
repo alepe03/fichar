@@ -6,12 +6,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
+import 'package:open_file/open_file.dart';
 
 import '../models/empleado.dart';
 import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../providers/admin_provider.dart';
 import '../models/horario_empleado.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
@@ -89,6 +93,22 @@ class UsuariosTab extends StatefulWidget {
 class _UsuariosTabState extends State<UsuariosTab> {
   FiltroEstado filtro = FiltroEstado.activos;
 
+  // Helper para mostrar el rol con etiqueta humana
+  String _rolLabel(String? rol) {
+    switch (rol) {
+      case 'admin':
+        return 'Administrador';
+      case 'supervisor':
+        return 'Supervisor';
+      case 'terminal_fichaje':
+        return 'Terminal de fichaje';
+      case 'empleado':
+        return 'Empleado';
+      default:
+        return 'N/D';
+    }
+  }
+
   // === GENERACIÓN DEL QR Y PDF ===
 
   Future<File> generarPdfQrEmpleado(Empleado emp) async {
@@ -157,7 +177,23 @@ class _UsuariosTabState extends State<UsuariosTab> {
           child: _FormularioEmpleado(
             cifEmpresa: provider.cifEmpresa,
             empleadoExistente: empleado,
+            maxUsuariosActivos: provider.maxUsuariosActivos,    // <-- pasa el max (puede ser null)
+            activosQueCuentan: provider.activosQueCuentan,      // <-- pasa los activos que cuentan (excluye supervisor)
             onSubmit: (nuevo, usuarioOriginal) async {
+              // Seguridad extra por si toquetean el cliente:
+              const rolesPermitidosAdmin = ['empleado', 'supervisor', 'terminal_fichaje'];
+              if (nuevo.rol != 'admin' && !rolesPermitidosAdmin.contains(nuevo.rol)) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Rol no permitido. Solo Empleado, Supervisor o Terminal de fichaje.'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+                return;
+              }
+
               String? error;
               if (empleado == null) {
                 error = await provider.addEmpleado(nuevo);
@@ -194,8 +230,25 @@ class _UsuariosTabState extends State<UsuariosTab> {
             break;
         }
 
+        // Activos X/Y (X excluye supervisor; Y puede ser null)
+        final int activosQueCuentan = provider.activosQueCuentan;
+        final int? maxUsuariosActivos = provider.maxUsuariosActivos;
+
         return Column(
           children: [
+            if (maxUsuariosActivos != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Chip(
+                  avatar: const Icon(Icons.people_alt, size: 18, color: Colors.white),
+                  label: Text(
+                    'Activos $activosQueCuentan/$maxUsuariosActivos',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: kPrimaryBlue,
+                ),
+              ),
+
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
@@ -236,6 +289,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
                       itemCount: empleadosFiltrados.length,
                       itemBuilder: (context, index) {
                         final emp = empleadosFiltrados[index];
+
                         return Card(
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 3,
@@ -244,7 +298,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
                             title: Text(emp.nombre ?? emp.usuario,
                                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
                             subtitle: Text(
-                                '${emp.email ?? 'Sin email'} · Rol: ${emp.rol ?? 'N/D'} · Estado: ${emp.activo == 1 ? 'Activo' : 'Inactivo'}',
+                                '${emp.email ?? "Sin email"} · Rol: ${_rolLabel(emp.rol)} · Estado: ${emp.activo == 1 ? "Activo" : "Inactivo"}',
                                 style: const TextStyle(fontSize: 14)),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -270,6 +324,25 @@ class _UsuariosTabState extends State<UsuariosTab> {
                                       ),
                                     );
                                     if (confirm == true) {
+                                      final quiereActivar = emp.activo == 0;
+                                      final rolCuenta = (emp.rol != 'supervisor');
+                                      final bool sinPlazas = (maxUsuariosActivos != null) &&
+                                          rolCuenta &&
+                                          quiereActivar &&
+                                          (activosQueCuentan >= maxUsuariosActivos);
+
+                                      if (sinPlazas) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('No quedan plazas activas en el plan de la empresa.'),
+                                              backgroundColor: Colors.redAccent,
+                                            ),
+                                          );
+                                        }
+                                        return; // no disparamos update
+                                      }
+
                                       final nuevoEstado = emp.activo == 1 ? 0 : 1;
                                       final error = await provider.updateEmpleado(
                                         emp.copyWith(activo: nuevoEstado),
@@ -328,10 +401,16 @@ class _FormularioEmpleado extends StatefulWidget {
   final Empleado? empleadoExistente;
   final void Function(Empleado empleado, String usuarioOriginal) onSubmit;
 
+  // NUEVOS: para UX de plazas
+  final int? maxUsuariosActivos;
+  final int activosQueCuentan;
+
   const _FormularioEmpleado({
     required this.cifEmpresa,
     this.empleadoExistente,
     required this.onSubmit,
+    this.maxUsuariosActivos,
+    this.activosQueCuentan = 0,
   });
 
   @override
@@ -350,17 +429,41 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
   late TextEditingController _dniCtrl;
   late TextEditingController _passwordCtrl;
 
-  final _roles = ['admin', 'supervisor', 'empleado', 'terminal_fichaje'];
+  // === Cambios clave ===
+  // Lista de roles permitidos cuando el ADMIN crea/edita usuarios que NO son admin.
+  final List<String> _rolesPermitidosAdmin = const ['empleado', 'supervisor', 'terminal_fichaje'];
+
   String? _rolSeleccionado;
   bool _puedeLocalizar = false;
   bool _activo = true;
 
   late String _usuarioOriginal;
+  late bool _isEditing;
+  late bool _editaUnAdmin; // si el usuario existente es admin
+
+  // Helper etiqueta humana
+  String _rolLabel(String? rol) {
+    switch (rol) {
+      case 'admin':
+        return 'Administrador';
+      case 'supervisor':
+        return 'Supervisor';
+      case 'terminal_fichaje':
+        return 'Terminal de fichaje';
+      case 'empleado':
+        return 'Empleado';
+      default:
+        return 'N/D';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     final emp = widget.empleadoExistente;
+    _isEditing = emp != null;
+    _editaUnAdmin = (emp?.rol == 'admin');
+
     _usuarioCtrl = TextEditingController(text: emp?.usuario ?? '');
     _nombreCtrl = TextEditingController(text: emp?.nombre ?? '');
     _emailCtrl = TextEditingController(text: emp?.email ?? '');
@@ -370,7 +473,17 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     _telefonoCtrl = TextEditingController(text: emp?.telefono ?? '');
     _dniCtrl = TextEditingController(text: emp?.dni ?? '');
     _passwordCtrl = TextEditingController(text: emp != null ? '******' : '');
-    _rolSeleccionado = emp?.rol;
+
+    // Si edita un admin, bloqueamos el cambio de rol y lo mostramos fijo
+    if (_editaUnAdmin) {
+      _rolSeleccionado = 'admin';
+    } else {
+      // En creación o edición de no-admin, por defecto primer rol permitido
+      _rolSeleccionado = emp?.rol != null && _rolesPermitidosAdmin.contains(emp!.rol)
+          ? emp.rol
+          : _rolesPermitidosAdmin.first;
+    }
+
     _puedeLocalizar = (emp?.puedeLocalizar ?? 0) == 1;
     _activo = (emp?.activo ?? 1) == 1;
     _usuarioOriginal = emp?.usuario ?? '';
@@ -378,10 +491,15 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.empleadoExistente != null;
     final theme = Theme.of(context);
 
-    final bool puedeCambiarLocalizacion = _rolSeleccionado != 'supervisor';
+    final bool rolCuenta = (_rolSeleccionado != 'supervisor');
+    final bool hayMax = widget.maxUsuariosActivos != null;
+
+    // No hay plazas si: hay max definido, el rol cuenta, el registro está INACTIVO ahora
+    // (porque al togglear a true estaríamos intentando ocupar plaza), y X>=Y.
+    final bool sinPlazasAlActivar =
+        hayMax && rolCuenta && (_activo == false) && (widget.activosQueCuentan >= widget.maxUsuariosActivos!);
 
     return SingleChildScrollView(
       child: Form(
@@ -390,7 +508,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              isEditing ? 'Editar empleado' : 'Nuevo empleado',
+              _isEditing ? 'Editar empleado' : 'Nuevo empleado',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
@@ -425,8 +543,19 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 prefixIcon: Icon(Icons.email, color: kPrimaryBlue),
               ),
               keyboardType: TextInputType.emailAddress,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'Email obligatorio';
+                }
+                final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                if (!emailRegex.hasMatch(v.trim())) {
+                  return 'Introduce un email válido';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 12),
+
             // Dirección
             TextFormField(
               controller: _direccionCtrl,
@@ -489,53 +618,83 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 prefixIcon: Icon(Icons.lock, color: kPrimaryBlue),
               ),
               obscureText: true,
-              enabled: !isEditing,
+              enabled: !_isEditing,
               validator: (v) {
-                if (!isEditing && (v == null || v.isEmpty)) {
+                if (!_isEditing && (v == null || v.isEmpty)) {
                   return 'Contraseña obligatoria';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 12),
-            // Rol
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                labelText: 'Rol',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
-              ),
-              value: _rolSeleccionado,
-              items: _roles
-                  .map(
-                    (r) => DropdownMenuItem(
-                      value: r,
-                      child: Text(
-                        r == 'admin'
-                            ? 'Administrador'
-                            : r == 'supervisor'
-                                ? 'Supervisor'
-                                : r == 'terminal_fichaje'
-                                    ? 'Terminal de fichaje'
-                                    : 'Empleado',
+
+            // Rol (bloqueado si edita un admin; si no, limitado a los 3 permitidos)
+            if (_editaUnAdmin)
+              TextFormField(
+                enabled: false,
+                initialValue: _rolLabel('admin'),
+                decoration: const InputDecoration(
+                  labelText: 'Rol',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
+                ),
+              )
+            else
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Rol',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
+                ),
+                value: _rolSeleccionado,
+                items: _rolesPermitidosAdmin
+                    .map(
+                      (r) => DropdownMenuItem(
+                        value: r,
+                        child: Text(_rolLabel(r)),
                       ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() {
-                _rolSeleccionado = v;
-                if (v == 'supervisor') {
-                  _puedeLocalizar = false;
-                }
-              }),
-              validator: (v) => v == null ? 'Selecciona un rol' : null,
-            ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  final bool nuevoRolCuenta = v != 'supervisor';
+                  // Si estoy EDITANDO, el usuario está ACTIVO, el rol actual es supervisor,
+                  // y quiero pasarlo a un rol que cuenta, pero no hay plazas => bloqueo.
+                  final bool noQuedanPlazasParaCambioDeRol =
+                      _isEditing &&
+                      _activo &&
+                      (_rolSeleccionado == 'supervisor') &&
+                      nuevoRolCuenta &&
+                      (widget.maxUsuariosActivos != null) &&
+                      (widget.activosQueCuentan >= widget.maxUsuariosActivos!);
+
+                  if (noQuedanPlazasParaCambioDeRol) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No quedan plazas activas en el plan para cambiar el rol.'),
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    );
+                    return; // no cambiamos el rol en UI
+                  }
+
+                  setState(() {
+                    _rolSeleccionado = v;
+                    if (v == 'supervisor') {
+                      _puedeLocalizar = false;
+                    }
+                  });
+                },
+                validator: (v) => v == null ? 'Selecciona un rol' : null,
+              ),
+
             const SizedBox(height: 12),
+
             // Switches
             SwitchListTile(
               title: const Text('Permitir localización'),
               value: _puedeLocalizar,
-              onChanged: puedeCambiarLocalizacion
+              onChanged: (_rolSeleccionado != 'supervisor')
                   ? (value) {
                       setState(() {
                         _puedeLocalizar = value;
@@ -543,15 +702,31 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                     }
                   : null,
             ),
+
+            // Empleado activo (con control de plazas locales)
             SwitchListTile(
               title: const Text('Empleado activo'),
               value: _activo,
+              subtitle: sinPlazasAlActivar
+                  ? const Text('Sin plazas activas disponibles en el plan', style: TextStyle(color: Colors.redAccent))
+                  : null,
               onChanged: (value) {
+                // Si queremos activar (value==true) y no hay plazas, lo bloqueamos.
+                if (value && sinPlazasAlActivar) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No quedan plazas activas en el plan de la empresa.'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                  return;
+                }
                 setState(() {
                   _activo = value;
                 });
               },
             ),
+
             const SizedBox(height: 24),
             // Botón Guardar
             SizedBox(
@@ -560,6 +735,19 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
+                    final rolParaGuardar = _editaUnAdmin ? 'admin' : _rolSeleccionado;
+
+                    // Defensa adicional en cliente
+                    if (!_editaUnAdmin && !_rolesPermitidosAdmin.contains(rolParaGuardar)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Rol no permitido. Solo Empleado, Supervisor o Terminal de fichaje.'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                      return;
+                    }
+
                     widget.onSubmit(
                       Empleado(
                         usuario: _usuarioCtrl.text.trim(),
@@ -571,8 +759,8 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                         email: _emailCtrl.text.trim(),
                         nombre: _nombreCtrl.text.trim(),
                         dni: _dniCtrl.text.trim(),
-                        rol: _rolSeleccionado,
-                        passwordHash: isEditing ? '' : _passwordCtrl.text.trim(),
+                        rol: rolParaGuardar,
+                        passwordHash: _isEditing ? '' : _passwordCtrl.text.trim(),
                         puedeLocalizar: _puedeLocalizar ? 1 : 0,
                         activo: _activo ? 1 : 0,
                       ),
@@ -580,7 +768,7 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                     );
                   }
                 },
-                child: Text(isEditing ? 'Guardar cambios' : 'Guardar'),
+                child: Text(_isEditing ? 'Guardar cambios' : 'Guardar'),
               ),
             ),
           ],
@@ -589,8 +777,15 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     );
   }
 }
-
 // ===== Fichajes Tab =====
+
+
+/// Agregado por usuario para el resumen
+class _Agg {
+  int trabajadas = 0; // minutos
+  int ordinarias = 0; // minutos
+  final Set<DateTime> diasContados = {}; // para no duplicar ordinarias por día
+}
 
 class FichajesTab extends StatefulWidget {
   const FichajesTab({Key? key}) : super(key: key);
@@ -604,6 +799,10 @@ class _FichajesTabState extends State<FichajesTab> {
   int _selectedMonth = DateTime.now().month;
   String? _selectedUsuario;
 
+  // --- Config: cambia a false si tu diaSemana es 0..6
+  static const bool kMondayIs1 = true;
+
+  // ------------------ UI helpers ------------------
   List<DropdownMenuItem<int>> _buildYears() {
     final now = DateTime.now();
     final years = List.generate(6, (i) => now.year - i);
@@ -631,6 +830,7 @@ class _FichajesTabState extends State<FichajesTab> {
     ];
   }
 
+  // ------------------ Datos / filtros ------------------
   List<Historico> _filtrarRegistros(List<Historico> registros) {
     return registros.where((reg) {
       if (_selectedUsuario != null && reg.usuario != _selectedUsuario) return false;
@@ -643,24 +843,28 @@ class _FichajesTabState extends State<FichajesTab> {
   }
 
   List<SesionTrabajo> _agruparSesionesPorUsuario(List<Historico> registros) {
-    // Agrupa por usuario, no mezcla sesiones de empleados distintos
-    Map<String, List<Historico>> porUsuario = {};
+    // Agrupa por usuario y ordena cronológicamente
+    final Map<String, List<Historico>> porUsuario = {};
     for (final reg in registros) {
-      if (reg.usuario == null) continue;
-      porUsuario.putIfAbsent(reg.usuario!, () => []).add(reg);
+      final u = reg.usuario;
+      if (u == null) continue;
+      porUsuario.putIfAbsent(u, () => []).add(reg);
     }
-    List<SesionTrabajo> sesiones = [];
+
+    final List<SesionTrabajo> sesiones = [];
     porUsuario.forEach((usuario, regsUsuario) {
-      // Ordenar por fecha relevante
       regsUsuario.sort((a, b) {
-        final fechaA = (a.tipo?.toLowerCase() == 'salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
-        final fechaB = (b.tipo?.toLowerCase() == 'salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
-        return fechaA.compareTo(fechaB);
+        final fa = (a.tipo?.toLowerCase() == 'salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
+        final fb = (b.tipo?.toLowerCase() == 'salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
+        return fa.compareTo(fb);
       });
+
       Historico? entradaPendiente;
-      List<IncidenciaEnSesion> incidenciasPendientes = [];
+      final List<IncidenciaEnSesion> incidenciasPendientes = [];
+
       for (final reg in regsUsuario) {
-        if (reg.tipo?.toLowerCase() == 'entrada') {
+        final t = reg.tipo?.toLowerCase();
+        if (t == 'entrada') {
           if (entradaPendiente != null) {
             sesiones.add(SesionTrabajo(
               entrada: entradaPendiente,
@@ -670,7 +874,7 @@ class _FichajesTabState extends State<FichajesTab> {
             incidenciasPendientes.clear();
           }
           entradaPendiente = reg;
-        } else if (reg.tipo?.toLowerCase() == 'salida') {
+        } else if (t == 'salida') {
           if (entradaPendiente != null) {
             sesiones.add(SesionTrabajo(
               entrada: entradaPendiente,
@@ -680,30 +884,23 @@ class _FichajesTabState extends State<FichajesTab> {
             entradaPendiente = null;
             incidenciasPendientes.clear();
           } else {
-            sesiones.add(SesionTrabajo(
-              entrada: null,
-              salida: reg,
-              incidencias: [],
-            ));
+            // Salida sin entrada
+            sesiones.add(SesionTrabajo(entrada: null, salida: reg, incidencias: const []));
           }
-        } else if (reg.tipo != null && reg.tipo!.toLowerCase().startsWith('incidencia')) {
+        } else if (t != null && t.startsWith('incidencia')) {
           String contexto = 'Sin entrada/salida';
-          if (reg.tipo!.toLowerCase() == 'incidenciaentrada') {
-            contexto = 'Salida';
-          } else if (reg.tipo!.toLowerCase() == 'incidenciasalida') {
-            contexto = 'Entrada';
-          }
+          if (t == 'incidenciaentrada') contexto = 'Salida';
+          if (t == 'incidenciasalida') contexto = 'Entrada';
+
           if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
-            sesiones.add(SesionTrabajo(
-              entrada: null,
-              salida: null,
-              incidencias: [IncidenciaEnSesion(reg, contexto)],
-            ));
+            sesiones.add(SesionTrabajo(entrada: null, salida: null, incidencias: [IncidenciaEnSesion(reg, contexto)]));
           } else {
             incidenciasPendientes.add(IncidenciaEnSesion(reg, contexto));
           }
         }
       }
+
+      // Cierra entrada huérfana
       if (entradaPendiente != null) {
         sesiones.add(SesionTrabajo(
           entrada: entradaPendiente,
@@ -712,140 +909,425 @@ class _FichajesTabState extends State<FichajesTab> {
         ));
         incidenciasPendientes.clear();
       }
+
+      // Incidencias sueltas residual
       if (incidenciasPendientes.isNotEmpty) {
-        final sinContexto = incidenciasPendientes.where((inc) => inc.contexto == 'Sin entrada/salida').toList();
-        for (var inc in sinContexto) {
-          sesiones.add(SesionTrabajo(
-            entrada: null,
-            salida: null,
-            incidencias: [inc],
-          ));
+        for (var inc in incidenciasPendientes.where((x) => x.contexto == 'Sin entrada/salida')) {
+          sesiones.add(SesionTrabajo(entrada: null, salida: null, incidencias: [inc]));
         }
       }
     });
 
     // Orden descendente por fecha
     sesiones.sort((a, b) {
-      final fechaA = a.entrada?.fechaEntrada ?? a.salida?.fechaSalida ?? '';
-      final fechaB = b.entrada?.fechaEntrada ?? b.salida?.fechaSalida ?? '';
-      return fechaB.compareTo(fechaA);
+      final fa = a.entrada?.fechaEntrada ?? a.salida?.fechaSalida ?? '';
+      final fb = b.entrada?.fechaEntrada ?? b.salida?.fechaSalida ?? '';
+      return fb.compareTo(fa);
     });
     return sesiones;
   }
 
-  String formatFecha(String? fechaStr) {
+  // ------------------ Helpers de fechas/tiempo ------------------
+  final DateFormat _fmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  String _formatFecha(String? fechaStr) {
     if (fechaStr == null || fechaStr.isEmpty) return '-';
     final dt = DateTime.tryParse(fechaStr);
     if (dt == null) return '-';
-    return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+    return _fmt.format(dt);
   }
 
-  Future<pw.Document> _crearPdf(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados, Map<String, Incidencia> mapaIncidencias) async {
+  int _diffMinutos(DateTime inicio, DateTime fin) {
+    return fin.isAfter(inicio) ? fin.difference(inicio).inMinutes : 0;
+  }
+
+  String _formatMinutos(int minutos) {
+    final h = (minutos ~/ 60).toString().padLeft(2, '0');
+    final m = (minutos % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  int _weekdayToDiaSemana(DateTime d) {
+    // DateTime.weekday: 1=Mon..7=Sun
+    if (kMondayIs1) return d.weekday; // 1..7
+    // Si usas 0..6 (0=Lunes)
+    return (d.weekday % 7); // 1..7 -> 1..6,0 => 0..6
+  }
+
+  DateTime? _parse(String? s) => (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
+
+  // ------------------ Horas ordinarias (lookup) ------------------
+  /// (dni, diaSemana) -> minutos ordinarios del día (sumados si hay varios turnos)
+  Map<String, Map<int, int>> _buildOrdinariasIndex(List<HorarioEmpleado> horarios) {
+    final Map<String, Map<int, int>> idx = {};
+    for (final h in horarios) {
+      if (h.dniEmpleado.isEmpty) continue;
+      final dni = h.dniEmpleado;
+      final ds = h.diaSemana;
+      final min = h.horasOrdinariasMin ?? _tryParseHHmmToMinutes(h.horasOrdinarias);
+      if (min == null) continue;
+
+      idx.putIfAbsent(dni, () => {});
+      idx[dni]!.update(ds, (v) => v + min, ifAbsent: () => min);
+    }
+    return idx;
+  }
+
+  int? _tryParseHHmmToMinutes(String? hhmm) {
+    if (hhmm == null || hhmm.isEmpty) return null;
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return h * 60 + m;
+  }
+
+  /// Devuelve minutos ordinarios para un dni y fecha
+  int? _ordinariasForDay(Map<String, Map<int, int>> idx, String dni, DateTime fecha) {
+    final ds = _weekdayToDiaSemana(fecha);
+    final byDni = idx[dni];
+    if (byDni == null) return null;
+    return byDni[ds];
+  }
+
+  // ------------------ PDF ------------------
+  Future<pw.Document> _crearPdf({
+    required List<SesionTrabajo> sesiones,
+    required Map<String, Empleado> mapaEmpleados,
+    required Map<String, Incidencia> mapaIncidencias,
+    required List<HorarioEmpleado> horarios,
+  }) async {
     final pdf = pw.Document();
 
+    // Paleta azul/blanco
+    const PdfColor azul = PdfColor.fromInt(0xFF2196F3);
+    const PdfColor azulClaro = PdfColor.fromInt(0xFFE3F2FD);
+    const PdfColor blanco = PdfColor.fromInt(0xFFFFFFFF);
+    const PdfColor grisTexto = PdfColor.fromInt(0xFF444444);
+
+    // ✅ ThemeData (solo theme, sin pageTheme)
+    final theme = pw.ThemeData(
+      defaultTextStyle: const pw.TextStyle(color: grisTexto, fontSize: 10),
+    );
+
+    // Índice de ordinarias
+    final ordinariasIdx = _buildOrdinariasIndex(horarios);
+
+    // Cabecera de documento
+    final titulo = 'Fichajes ${_selectedYear}-${_selectedMonth.toString().padLeft(2, '0')}'
+        '${_selectedUsuario != null ? ' · ${_selectedUsuario}' : ''}';
+
+    // Cabeceras tabla principal
+    final headers = [
+      'Empleado',
+      'DNI',
+      'Entrada',
+      'Salida',
+      'Coordenadas Entrada',
+      'Coordenadas Salida',
+      'Tiempo',
+      'Horas ordinarias',
+      'Incidencias',
+    ];
+
+    List<pw.TableRow> buildMainTableRows() {
+      final rows = <pw.TableRow>[];
+
+      // Header
+      rows.add(
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: azul),
+          children: headers
+              .map((h) => pw.Padding(
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text(h, style: pw.TextStyle(color: blanco, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  ))
+              .toList(),
+        ),
+      );
+
+      // Body
+      for (int i = 0; i < sesiones.length; i++) {
+        final sesion = sesiones[i];
+
+        final usuario = sesion.entrada?.usuario ??
+            sesion.salida?.usuario ??
+            (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
+
+        final empleado = (usuario != null) ? mapaEmpleados[usuario] : null;
+
+        final entradaStr = _formatFecha(sesion.entrada?.fechaEntrada);
+        final salidaStr = _formatFecha(sesion.salida?.fechaSalida);
+
+        final entradaCoords = (sesion.entrada?.latitud != null && sesion.entrada?.longitud != null)
+            ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
+            : '-';
+
+        final salidaCoords = (sesion.salida?.latitud != null && sesion.salida?.longitud != null)
+            ? '${sesion.salida!.latitud}, ${sesion.salida!.longitud}'
+            : '-';
+
+        // Tiempo trabajado (min)
+        int minutosTrabajados = 0;
+        final dtE = _parse(sesion.entrada?.fechaEntrada);
+        final dtS = _parse(sesion.salida?.fechaSalida);
+        if (dtE != null && dtS != null) {
+          minutosTrabajados = _diffMinutos(dtE, dtS);
+        }
+        final tiempoTrabajadoStr = minutosTrabajados > 0 ? '${_formatMinutos(minutosTrabajados)} h' : '-';
+
+        // Horas ordinarias (lookup por DNI + día de la entrada)
+        String horasOrdinariasStr = '-';
+        if (dtE != null) {
+          final dni = empleado?.dni ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado;
+          if (dni != null && dni.isNotEmpty) {
+            final mo = _ordinariasForDay(ordinariasIdx, dni, dtE);
+            if (mo != null && mo > 0) horasOrdinariasStr = '${_formatMinutos(mo)} h';
+          }
+        }
+
+        // Incidencias -> SOLO CÓDIGO (más observaciones si hay)
+        final incidenciasText = sesion.incidencias.isNotEmpty
+            ? sesion.incidencias.map((inc) {
+                final c = inc.incidencia.incidenciaCodigo ?? '-';
+                final o = inc.incidencia.observaciones;
+                return o != null && o.isNotEmpty ? '$c ($o)' : c;
+              }).join(', ')
+            : '-';
+
+        final rowColor = (i % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
+
+        rows.add(
+          pw.TableRow(
+            decoration: rowColor,
+            children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Text(empleado?.nombre ?? usuario ?? 'Desconocido'),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Text(empleado?.dni ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado ?? '-'),
+              ),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(entradaStr)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(salidaStr)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(entradaCoords)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(salidaCoords)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(tiempoTrabajadoStr)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(horasOrdinariasStr)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(incidenciasText)),
+            ],
+          ),
+        );
+      }
+      return rows;
+    }
+
+    // --------- Resumen por empleado (usa lo filtrado) ---------
+    final Map<String /*usuario*/, _Agg> agg = {};
+    for (final sesion in sesiones) {
+      final usuario = sesion.entrada?.usuario ??
+          sesion.salida?.usuario ??
+          (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
+      if (usuario == null) continue;
+
+      final a = agg.putIfAbsent(usuario, () => _Agg());
+
+      final dtE = _parse(sesion.entrada?.fechaEntrada);
+      final dtS = _parse(sesion.salida?.fechaSalida);
+
+      // trabajadas
+      if (dtE != null && dtS != null) {
+        a.trabajadas += _diffMinutos(dtE, dtS);
+      }
+
+      // ordinarias: cuenta 1 vez por día
+      if (dtE != null) {
+        final dayKey = DateTime(dtE.year, dtE.month, dtE.day);
+        if (!a.diasContados.contains(dayKey)) {
+          final dni = (mapaEmpleados[usuario]?.dni) ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado;
+          if (dni != null && dni.isNotEmpty) {
+            final mo = _ordinariasForDay(ordinariasIdx, dni, dtE);
+            if (mo != null && mo > 0) a.ordinarias += mo;
+          }
+          a.diasContados.add(dayKey);
+        }
+      }
+    }
+
+    final totalTrabMin = agg.values.fold(0, (p, e) => p + e.trabajadas);
+    final totalOrdMin = agg.values.fold(0, (p, e) => p + e.ordinarias);
+
+    List<pw.TableRow> buildResumenRows() {
+      final rows = <pw.TableRow>[];
+      rows.add(
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: azul),
+          children: [
+            _cellHeader('Empleado', blanco),
+            _cellHeader('DNI', blanco),
+            _cellHeader('Ordinarias (mes)', blanco),
+            _cellHeader('Trabajadas (mes)', blanco),
+            _cellHeader('Δ', blanco),
+          ],
+        ),
+      );
+
+      int i = 0;
+      mapaEmpleados.forEach((usuario, emp) {
+        final a = agg[usuario];
+        if (a == null) return; // no aparece en sesiones
+        final rowColor = (i++ % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
+        final delta = a.trabajadas - a.ordinarias;
+
+        rows.add(
+          pw.TableRow(
+            decoration: rowColor,
+            children: [
+              _cellBody(emp.nombre ?? usuario),
+              _cellBody(emp.dni ?? '-'),
+              _cellBody('${_formatMinutos(a.ordinarias)} h'),
+              _cellBody('${_formatMinutos(a.trabajadas)} h'),
+              _cellBody('${_formatMinutos(delta)} h'),
+            ],
+          ),
+        );
+      });
+
+      // Totales
+      rows.add(
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: azulClaro),
+          children: [
+            _cellBodyBold('Totales'),
+            _cellBodyBold(''),
+            _cellBodyBold('${_formatMinutos(totalOrdMin)} h'),
+            _cellBodyBold('${_formatMinutos(totalTrabMin)} h'),
+            _cellBodyBold('${_formatMinutos(totalTrabMin - totalOrdMin)} h'),
+          ],
+        ),
+      );
+
+      return rows;
+    }
+
+    // --------- Render PDF ---------
     pdf.addPage(
       pw.MultiPage(
-        build: (context) {
-          return [
-            pw.Header(level: 0, child: pw.Text('Fichajes filtrados', style: pw.TextStyle(fontSize: 24))),
-            pw.Table.fromTextArray(
-              headers: [
-                'Empleado',
-                'DNI',
-                'Entrada',
-                'Salida',
-                'Coordenadas Entrada',
-                'Coordenadas Salida',
-                'Tiempo trabajado',
-                'Incidencias'
-              ],
-              data: sesiones.map((sesion) {
-                final usuario = sesion.entrada?.usuario ?? sesion.salida?.usuario ??
-                    (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
-                final empleado = usuario != null ? mapaEmpleados[usuario] : null;
-
-                final entradaStr = formatFecha(sesion.entrada?.fechaEntrada);
-                final salidaStr = formatFecha(sesion.salida?.fechaSalida);
-
-                final entradaCoords = (sesion.entrada?.latitud != null && sesion.entrada?.longitud != null)
-                    ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
-                    : '-';
-
-                final salidaCoords = (sesion.salida?.latitud != null && sesion.salida?.longitud != null)
-                    ? '${sesion.salida!.latitud}, ${sesion.salida!.longitud}'
-                    : '-';
-
-                String tiempoTrabajado = '';
-                if (sesion.entrada != null && sesion.salida != null) {
-                  final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
-                  final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
-                  if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
-                    final duracion = dtSalida.difference(dtEntrada);
-                    final horas = duracion.inHours.toString().padLeft(2, '0');
-                    final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
-                    tiempoTrabajado = '$horas:$minutos h';
-                  }
-                }
-
-                final incidenciasText = sesion.incidencias.isNotEmpty
-                    ? sesion.incidencias.map((inc) {
-                        final c = inc.incidencia.incidenciaCodigo ?? '-';
-                        final o = inc.incidencia.observaciones ?? '';
-                        final completa = mapaIncidencias[c];
-                        final computaTexto = completa != null
-                            ? (completa.computa ? 'Computa' : 'No computa')
-                            : '';
-                        return '$c${o.isNotEmpty ? ' ($o)' : ''}${computaTexto.isNotEmpty ? ' - $computaTexto' : ''}';
-                      }).join(', ')
-                    : '-';
-
-                return [
-                  empleado?.nombre ?? usuario ?? 'Desconocido',
-                  empleado?.dni ?? '-',
-                  entradaStr,
-                  salidaStr,
-                  entradaCoords,
-                  salidaCoords,
-                  tiempoTrabajado.isNotEmpty ? tiempoTrabajado : '-',
-                  incidenciasText,
-                ];
-              }).toList(),
+        theme: theme,
+        // 👇 Usamos margin aquí, sin pageTheme
+        margin: const pw.EdgeInsets.fromLTRB(24, 28, 24, 28),
+        header: (context) => pw.Container(
+          padding: const pw.EdgeInsets.symmetric(vertical: 8),
+          child: pw.Container(
+            decoration: const pw.BoxDecoration(
+              color: azul,
+              borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
             ),
-          ];
-        },
+            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Fichajes filtrados',
+                  style: pw.TextStyle(color: blanco, fontSize: 16, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.Text(titulo, style: const pw.TextStyle(color: blanco, fontSize: 10)),
+              ],
+            ),
+          ),
+        ),
+        build: (context) => [
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.2), // Empleado
+              1: pw.FlexColumnWidth(0.9), // DNI
+              2: pw.FlexColumnWidth(1.1), // Entrada
+              3: pw.FlexColumnWidth(1.1), // Salida
+              4: pw.FlexColumnWidth(1.3), // Coords E
+              5: pw.FlexColumnWidth(1.3), // Coords S
+              6: pw.FlexColumnWidth(0.9), // Tiempo
+              7: pw.FlexColumnWidth(1.0), // Ordinarias
+              8: pw.FlexColumnWidth(1.3), // Incidencias
+            },
+            children: buildMainTableRows(),
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text('Resumen de horas', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.4),
+              1: pw.FlexColumnWidth(1.0),
+              2: pw.FlexColumnWidth(1.0),
+              3: pw.FlexColumnWidth(1.0),
+              4: pw.FlexColumnWidth(0.6),
+            },
+            children: buildResumenRows(),
+          ),
+        ],
       ),
     );
 
     return pdf;
   }
 
+  static pw.Widget _cellHeader(String text, PdfColor color) => pw.Padding(
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(text, style: pw.TextStyle(color: color, fontWeight: pw.FontWeight.bold, fontSize: 10)),
+      );
+
+  static pw.Widget _cellBody(String text) =>
+      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
+
+  static pw.Widget _cellBodyBold(String text) =>
+      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)));
+
+  // ------------------ Guardado ------------------
   Future<String> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
     final dir = await getApplicationDocumentsDirectory();
-    final fileName = 'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf';
+    final fileName =
+        'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf';
     final filePath = '${dir.path}/$fileName';
     final file = File(filePath);
     await file.writeAsBytes(pdfBytes);
     return filePath;
   }
 
-  Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones, Map<String, Empleado> mapaEmpleados, Map<String, Incidencia> mapaIncidencias) async {
+  Future<void> _exportarPdfDescargar(
+    List<SesionTrabajo> sesiones,
+    Map<String, Empleado> mapaEmpleados,
+    Map<String, Incidencia> mapaIncidencias,
+    List<HorarioEmpleado> horarios,
+  ) async {
     try {
-      final pdf = await _crearPdf(sesiones, mapaEmpleados, mapaIncidencias);
+      final pdf = await _crearPdf(
+        sesiones: sesiones,
+        mapaEmpleados: mapaEmpleados,
+        mapaIncidencias: mapaIncidencias,
+        horarios: horarios,
+      );
       final pdfBytes = await pdf.save();
       final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF guardado en: $rutaGuardado')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('PDF guardado en: $rutaGuardado')));
       }
 
-      final resultado = await OpenFile.open(rutaGuardado);
+      // Si usas open_filex:
+      // ❌ OpenFilex.open(rutaGuardado);
+      final resultado = await OpenFile.open(rutaGuardado);  // ✅
       if (resultado.type != ResultType.done && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo abrir el PDF automáticamente.')),
         );
       }
+
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -855,6 +1337,7 @@ class _FichajesTabState extends State<FichajesTab> {
     }
   }
 
+  // ------------------ Build ------------------
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminProvider>(
@@ -868,13 +1351,11 @@ class _FichajesTabState extends State<FichajesTab> {
         final registrosFiltrados = _filtrarRegistros(provider.historicos);
         final sesiones = _agruparSesionesPorUsuario(registrosFiltrados);
 
-        final Map<String, Empleado> mapaEmpleados = {
-          for (var e in provider.empleados) e.usuario: e
-        };
+        final Map<String, Empleado> mapaEmpleados = {for (var e in provider.empleados) e.usuario: e};
+        final Map<String, Incidencia> mapaIncidencias = {for (var i in provider.incidencias) i.codigo: i};
 
-        final Map<String, Incidencia> mapaIncidencias = {
-          for (var i in provider.incidencias) i.codigo: i
-        };
+        // ⚠️ Asegúrate de que aquí accedes a tu lista real de horarios
+        final List<HorarioEmpleado> horarios = provider.horarios; // cambia si tu propiedad tiene otro nombre
 
         return Column(
           children: [
@@ -890,9 +1371,7 @@ class _FichajesTabState extends State<FichajesTab> {
                         child: DropdownButton<int>(
                           value: _selectedYear,
                           items: _buildYears(),
-                          onChanged: (v) => setState(() {
-                            _selectedYear = v!;
-                          }),
+                          onChanged: (v) => setState(() => _selectedYear = v!),
                         ),
                       ),
                       Padding(
@@ -900,9 +1379,7 @@ class _FichajesTabState extends State<FichajesTab> {
                         child: DropdownButton<int>(
                           value: _selectedMonth,
                           items: _buildMonths(),
-                          onChanged: (v) => setState(() {
-                            _selectedMonth = v!;
-                          }),
+                          onChanged: (v) => setState(() => _selectedMonth = v!),
                         ),
                       ),
                       Expanded(
@@ -917,9 +1394,7 @@ class _FichajesTabState extends State<FichajesTab> {
                             underline: const SizedBox(),
                             value: _selectedUsuario,
                             items: _buildUsuarios(provider.empleados),
-                            onChanged: (v) => setState(() {
-                              _selectedUsuario = v;
-                            }),
+                            onChanged: (v) => setState(() => _selectedUsuario = v),
                           ),
                         ),
                       ),
@@ -932,9 +1407,10 @@ class _FichajesTabState extends State<FichajesTab> {
                       ElevatedButton.icon(
                         icon: const Icon(Icons.picture_as_pdf),
                         label: const Text('Exportar PDF'),
-                        onPressed: () => _exportarPdfDescargar(sesiones, mapaEmpleados, mapaIncidencias),
+                        onPressed: () =>
+                            _exportarPdfDescargar(sesiones, mapaEmpleados, mapaIncidencias, horarios),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 33, 150, 243),
+                          backgroundColor: const Color(0xFF2196F3),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
@@ -966,6 +1442,7 @@ class _FichajesTabState extends State<FichajesTab> {
                         }
 
                         if (esSoloIncidencia) {
+                          // Tarjeta de solo incidencia
                           return Card(
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 3,
@@ -982,8 +1459,6 @@ class _FichajesTabState extends State<FichajesTab> {
                                   ),
                                   const SizedBox(height: 8),
                                   ...sesion.incidencias.map((inc) {
-                                    final incidenciaCompleta = mapaIncidencias[inc.incidencia.incidenciaCodigo ?? ''];
-                                    final computaTexto = incidenciaCompleta?.computa == true ? 'Computa horas' : 'No computa';
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 6),
                                       child: Row(
@@ -993,10 +1468,10 @@ class _FichajesTabState extends State<FichajesTab> {
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
+                                              // SOLO código + observaciones
                                               'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
                                               '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                              ' — ${inc.contexto}'
-                                              ' — $computaTexto',
+                                              ' — ${inc.contexto}',
                                               style: const TextStyle(color: Colors.orange),
                                             ),
                                           ),
@@ -1009,34 +1484,27 @@ class _FichajesTabState extends State<FichajesTab> {
                             ),
                           );
                         } else {
-                          final entradaStr = formatFecha(sesion.entrada?.fechaEntrada);
-                          final salidaStr = formatFecha(sesion.salida?.fechaSalida);
-
-                          String tiempoTrabajado = '';
-                          if (sesion.entrada != null && sesion.salida != null) {
-                            final dtEntrada = DateTime.tryParse(sesion.entrada!.fechaEntrada);
-                            final dtSalida = DateTime.tryParse(sesion.salida!.fechaSalida ?? '');
-                            if (dtEntrada != null && dtSalida != null && dtSalida.isAfter(dtEntrada)) {
-                              final duracion = dtSalida.difference(dtEntrada);
-                              final horas = duracion.inHours.toString().padLeft(2, '0');
-                              final minutos = (duracion.inMinutes % 60).toString().padLeft(2, '0');
-                              tiempoTrabajado = '$horas:$minutos h';
-                            }
-                          }
+                          final entradaStr = _formatFecha(sesion.entrada?.fechaEntrada);
+                          final salidaStr = _formatFecha(sesion.salida?.fechaSalida);
 
                           String entradaCoords = '-';
                           String salidaCoords = '-';
 
                           final latE = sesion.entrada?.latitud;
                           final lonE = sesion.entrada?.longitud;
-                          if (latE != null && lonE != null) {
-                            entradaCoords = '$latE, $lonE';
-                          }
+                          if (latE != null && lonE != null) entradaCoords = '$latE, $lonE';
 
                           final latS = sesion.salida?.latitud;
                           final lonS = sesion.salida?.longitud;
-                          if (latS != null && lonS != null) {
-                            salidaCoords = '$latS, $lonS';
+                          if (latS != null && lonS != null) salidaCoords = '$latS, $lonS';
+
+                          // Tiempo trabajado (UI)
+                          String tiempoTrabajado = '';
+                          final dtE = _parse(sesion.entrada?.fechaEntrada);
+                          final dtS = _parse(sesion.salida?.fechaSalida);
+                          if (dtE != null && dtS != null) {
+                            final minutos = _diffMinutos(dtE, dtS);
+                            if (minutos > 0) tiempoTrabajado = '${_formatMinutos(minutos)} h';
                           }
 
                           return Card(
@@ -1061,8 +1529,6 @@ class _FichajesTabState extends State<FichajesTab> {
                                   Text('Coordenadas salida: $salidaCoords'),
                                   if (sesion.incidencias.isNotEmpty)
                                     ...sesion.incidencias.map((inc) {
-                                      final incidenciaCompleta = mapaIncidencias[inc.incidencia.incidenciaCodigo ?? ''];
-                                      final computaTexto = incidenciaCompleta?.computa == true ? 'Computa horas' : 'No computa';
                                       return Padding(
                                         padding: const EdgeInsets.only(top: 6),
                                         child: Row(
@@ -1072,10 +1538,10 @@ class _FichajesTabState extends State<FichajesTab> {
                                             const SizedBox(width: 6),
                                             Expanded(
                                               child: Text(
+                                                // SOLO código + observaciones
                                                 'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
                                                 '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                                ' — ${inc.contexto}'
-                                                ' — $computaTexto',
+                                                ' — ${inc.contexto}',
                                                 style: const TextStyle(color: Colors.orange),
                                               ),
                                             ),
@@ -1086,8 +1552,10 @@ class _FichajesTabState extends State<FichajesTab> {
                                   if (tiempoTrabajado.isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 6),
-                                      child: Text('Tiempo trabajado: $tiempoTrabajado',
-                                          style: const TextStyle(color: Color.fromARGB(255, 33, 150, 243))),
+                                      child: Text(
+                                        'Tiempo trabajado: $tiempoTrabajado',
+                                        style: const TextStyle(color: Color(0xFF2196F3)),
+                                      ),
                                     ),
                                 ],
                               ),
@@ -1103,6 +1571,8 @@ class _FichajesTabState extends State<FichajesTab> {
     );
   }
 }
+
+
 
 // Modelos auxiliares
 class SesionTrabajo {
@@ -1343,6 +1813,7 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
   }
 }
 
+// HorariosTab.dart
 
 class HorariosTab extends StatefulWidget {
   const HorariosTab({Key? key}) : super(key: key);
@@ -1354,7 +1825,7 @@ class HorariosTab extends StatefulWidget {
 class _HorariosTabState extends State<HorariosTab> {
   String? _dniEmpleadoSeleccionado;
 
-  final List<String> _diasSemana = [
+  final List<String> _diasSemana = const [
     'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
   ];
 
@@ -1367,11 +1838,39 @@ class _HorariosTabState extends State<HorariosTab> {
     });
   }
 
+  // ======= Helpers de formato =======
+
+  // Recorta HH:MM:SS -> HH:MM (y deja tal cual si ya viene HH:MM)
+  String _hhmm(String? t) {
+    if (t == null || t.isEmpty) return '';
+    final p = t.split(':');
+    if (p.length >= 2) return '${p[0].padLeft(2, '0')}:${p[1].padLeft(2, '0')}';
+    return t;
+  }
+
+  // Convierte minutos a HH:MM
+  String _fmtMin(int min) {
+    final h = (min ~/ 60).toString().padLeft(2, '0');
+    final m = (min % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  // Diferencia en minutos entre HH:MM(SS), manejando cruce de medianoche
+  int? _diffMin(String? ini, String? fin) {
+    if (ini == null || fin == null || ini.isEmpty || fin.isEmpty) return null;
+    final p1 = ini.split(':'), p2 = fin.split(':');
+    if (p1.length < 2 || p2.length < 2) return null;
+    int s = int.parse(p1[0]) * 60 + int.parse(p1[1]);
+    int e = int.parse(p2[0]) * 60 + int.parse(p2[1]);
+    if (e < s) e += 24 * 60; // termina al día siguiente
+    return e - s;
+  }
+
   void _abrirDialogoFormulario({HorarioEmpleado? horario}) {
     final provider = Provider.of<AdminProvider>(context, listen: false);
     showDialog(
       context: context,
-      barrierColor: Colors.transparent, // Para que el fondo sea transparente
+      barrierColor: Colors.transparent,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
@@ -1398,8 +1897,8 @@ class _HorariosTabState extends State<HorariosTab> {
             },
             onSubmitMultiple: (nuevosHorarios) async {
               String? error;
-              for (final horario in nuevosHorarios) {
-                error = await provider.addHorarioEmpleado(horario);
+              for (final h in nuevosHorarios) {
+                error = await provider.addHorarioEmpleado(h);
                 if (error != null) break;
               }
               if (context.mounted) Navigator.pop(context);
@@ -1419,9 +1918,11 @@ class _HorariosTabState extends State<HorariosTab> {
   Widget build(BuildContext context) {
     return Consumer<AdminProvider>(
       builder: (context, provider, _) {
-        List<HorarioEmpleado> horariosFiltrados = _dniEmpleadoSeleccionado == null
+        final horariosFiltrados = _dniEmpleadoSeleccionado == null
             ? provider.horarios
-            : provider.horarios.where((h) => h.dniEmpleado == _dniEmpleadoSeleccionado).toList();
+            : provider.horarios
+                .where((h) => h.dniEmpleado == _dniEmpleadoSeleccionado)
+                .toList();
 
         return Column(
           children: [
@@ -1437,11 +1938,11 @@ class _HorariosTabState extends State<HorariosTab> {
                     child: Text('Todos los empleados'),
                   ),
                   ...provider.empleados.where((e) => e.dni != null).map(
-                    (e) => DropdownMenuItem<String?>(
-                      value: e.dni!,
-                      child: Text(e.nombre ?? e.usuario),
-                    ),
-                  ),
+                        (e) => DropdownMenuItem<String?>(
+                          value: e.dni!,
+                          child: Text(e.nombre ?? e.usuario),
+                        ),
+                      ),
                 ],
                 onChanged: (val) async {
                   setState(() => _dniEmpleadoSeleccionado = val);
@@ -1461,67 +1962,118 @@ class _HorariosTabState extends State<HorariosTab> {
                       separatorBuilder: (_, __) => const Divider(height: 12),
                       itemCount: horariosFiltrados.length,
                       itemBuilder: (context, index) {
-                        final horario = horariosFiltrados[index];
+                        final h = horariosFiltrados[index];
                         final empleado = provider.empleados.firstWhere(
-                          (e) => e.dni == horario.dniEmpleado,
+                          (e) => e.dni == h.dniEmpleado,
                           orElse: () => Empleado(
                             usuario: '',
-                            dni: horario.dniEmpleado,
+                            dni: h.dniEmpleado,
                             nombre: '',
-                            cifEmpresa: horario.cifEmpresa,
+                            cifEmpresa: h.cifEmpresa,
                           ),
                         );
                         final nombreEmpleado = (empleado.nombre?.isNotEmpty ?? false)
                             ? empleado.nombre
                             : empleado.usuario;
 
+                        // Texto de horas ordinarias con fallback
+                        final horasTexto = () {
+                          if (h.horasOrdinarias != null &&
+                              h.horasOrdinarias!.isNotEmpty) {
+                            return _hhmm(h.horasOrdinarias); // "07:00:00" -> "07:00"
+                          }
+                          if (h.horasOrdinariasMin != null) {
+                            return _fmtMin(h.horasOrdinariasMin!); // 420 -> "07:00"
+                          }
+                          final d = _diffMin(h.horaInicio, h.horaFin);
+                          return d != null ? _fmtMin(d) : '';
+                        }();
+
                         return Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                           elevation: 3,
                           color: const Color(0xFFF7F0FA),
                           child: ListTile(
+                            // Título compacto: solo horas
                             title: Text(
-                              '${_diasSemana[horario.diaSemana]}: ${horario.horaInicio} - ${horario.horaFin}'
-                              '${horario.nombreTurno != null && horario.nombreTurno!.isNotEmpty ? ' (${horario.nombreTurno})' : ''}',
+                              '${_hhmm(h.horaInicio)} - ${_hhmm(h.horaFin)}',
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w700),
                             ),
+                            // Día + turno (ligero) y debajo empleado
                             subtitle: Text(
-                              'Empleado: $nombreEmpleado (${horario.dniEmpleado})',
+                              '${_diasSemana[h.diaSemana]}'
+                              '${(h.nombreTurno != null && h.nombreTurno!.isNotEmpty) ? ' · ${h.nombreTurno}' : ''}\n'
+                              'Empleado: $nombreEmpleado (${h.dniEmpleado})',
                               style: const TextStyle(fontWeight: FontWeight.w500),
                             ),
+                            // A la derecha: pill de horas + acciones
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (horasTexto.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    margin: const EdgeInsets.only(right: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                          color: Colors.blue.shade200),
+                                    ),
+                                    child: Text(
+                                      horasTexto,
+                                      style: TextStyle(
+                                        color: Colors.blue.shade800,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () => _abrirDialogoFormulario(horario: horario),
+                                  onPressed: () =>
+                                      _abrirDialogoFormulario(horario: h),
+                                  tooltip: 'Editar',
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                  icon: const Icon(Icons.delete_forever,
+                                      color: Colors.redAccent),
+                                  tooltip: 'Eliminar',
                                   onPressed: () async {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         title: const Text('Confirmar borrado'),
                                         content: Text(
-                                          '¿Eliminar horario del día ${_diasSemana[horario.diaSemana]} para empleado con DNI ${horario.dniEmpleado}?',
+                                          '¿Eliminar horario del día ${_diasSemana[h.diaSemana]} para ${h.dniEmpleado}?',
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () => Navigator.pop(ctx, false),
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
                                             child: const Text('Cancelar'),
                                           ),
                                           ElevatedButton(
-                                            onPressed: () => Navigator.pop(ctx, true),
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
                                             child: const Text('Eliminar'),
                                           ),
                                         ],
                                       ),
                                     );
                                     if (confirm == true) {
-                                      final error = await provider.deleteHorarioEmpleado(horario.id!, horario.dniEmpleado);
+                                      final error =
+                                          await provider.deleteHorarioEmpleado(
+                                              h.id!, h.dniEmpleado);
                                       if (error != null && context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(error),
+                                            backgroundColor: Colors.redAccent,
+                                          ),
                                         );
                                       }
                                     }
@@ -1540,10 +2092,8 @@ class _HorariosTabState extends State<HorariosTab> {
                 alignment: Alignment.bottomRight,
                 child: FloatingActionButton.extended(
                   icon: const Icon(Icons.schedule, color: Colors.white),
-                  label: const Text(
-                    'Añadir horario',
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  label: const Text('Añadir horario',
+                      style: TextStyle(color: Colors.white)),
                   onPressed: () => _abrirDialogoFormulario(),
                   backgroundColor: Colors.blue,
                   elevation: 6,
@@ -1588,7 +2138,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   TextEditingController _margenCtrl = TextEditingController();
   TextEditingController _margenDespuesCtrl = TextEditingController();
 
-  final List<String> _diasSemana = [
+  final List<String> _diasSemana = const [
     'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
   ];
 
@@ -1601,8 +2151,10 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
       _horaInicio = _parseTime(widget.horarioExistente!.horaInicio);
       _horaFin = _parseTime(widget.horarioExistente!.horaFin);
       _nombreTurnoCtrl.text = widget.horarioExistente?.nombreTurno ?? '';
-      _margenCtrl.text = widget.horarioExistente?.margenEntradaAntes.toString() ?? "10";
-      _margenDespuesCtrl.text = widget.horarioExistente?.margenEntradaDespues.toString() ?? "30";
+      _margenCtrl.text =
+          widget.horarioExistente?.margenEntradaAntes.toString() ?? "10";
+      _margenDespuesCtrl.text =
+          widget.horarioExistente?.margenEntradaDespues.toString() ?? "30";
     } else {
       _margenCtrl.text = "10";
       _margenDespuesCtrl.text = "30";
@@ -1622,7 +2174,9 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   }
 
   Future<void> _pickHoraPersonalizada({required bool isInicio}) async {
-    final initial = isInicio ? _horaInicio ?? const TimeOfDay(hour: 12, minute: 0) : _horaFin ?? const TimeOfDay(hour: 12, minute: 0);
+    final initial = isInicio
+        ? _horaInicio ?? const TimeOfDay(hour: 12, minute: 0)
+        : _horaFin ?? const TimeOfDay(hour: 12, minute: 0);
 
     final result = await showModalBottomSheet<TimeOfDay>(
       context: context,
@@ -1632,10 +2186,10 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
         return Padding(
           padding: EdgeInsets.only(bottom: bottomInset),
-          child: SafeArea(
+          child: const SafeArea(
             child: _TimePickerWheel(
-              initialHour: initial.hour,
-              initialMinute: initial.minute,
+              initialHour: 12,
+              initialMinute: 0,
             ),
           ),
         );
@@ -1657,11 +2211,14 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
 
   bool _isFormValid() {
     if (_horaInicio == null || _horaFin == null) return false;
-    if (_horaInicio!.hour * 60 + _horaInicio!.minute >= _horaFin!.hour * 60 + _horaFin!.minute) return false;
+    if (_horaInicio!.hour * 60 + _horaInicio!.minute >=
+        _horaFin!.hour * 60 + _horaFin!.minute) return false;
     if (!isEditing && _empleadosSeleccionados.isEmpty) return false;
     if (!isEditing && _diasSeleccionados.isEmpty) return false;
-    if (int.tryParse(_margenCtrl.text) == null || int.parse(_margenCtrl.text) < 0) return false;
-    if (int.tryParse(_margenDespuesCtrl.text) == null || int.parse(_margenDespuesCtrl.text) < 0) return false;
+    if (int.tryParse(_margenCtrl.text) == null ||
+        int.parse(_margenCtrl.text) < 0) return false;
+    if (int.tryParse(_margenDespuesCtrl.text) == null ||
+        int.parse(_margenDespuesCtrl.text) < 0) return false;
     return true;
   }
 
@@ -1710,7 +2267,8 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
 
   @override
   Widget build(BuildContext context) {
-    final empleadosList = widget.empleados.where((e) => e.dni != null).toList();
+    final empleadosList =
+        widget.empleados.where((e) => e.dni != null).toList();
 
     return SafeArea(
       child: Material(
@@ -1726,7 +2284,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                 BoxShadow(
                   color: Colors.black12,
                   blurRadius: 32,
-                  offset: Offset(0, 12),
+                  offset: const Offset(0, 12),
                 ),
               ],
             ),
@@ -1740,10 +2298,10 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Icono y título elegante
                           Row(
                             children: [
-                              Icon(Icons.schedule, size: 40, color: Colors.blue.shade600),
+                              Icon(Icons.schedule,
+                                  size: 40, color: Colors.blue.shade600),
                               const SizedBox(width: 12),
                               Text(
                                 isEditing ? 'Editar horario' : 'Nuevo horario',
@@ -1774,12 +2332,17 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                             spacing: 10,
                             runSpacing: 8,
                             children: empleadosList.map((emp) {
-                              final checked = _empleadosSeleccionados.contains(emp.dni!);
+                              final checked =
+                                  _empleadosSeleccionados.contains(emp.dni!);
                               return FilterChip(
                                 label: Text(emp.nombre ?? emp.usuario),
                                 labelStyle: TextStyle(
-                                  color: checked ? Colors.white : Colors.blue.shade800,
-                                  fontWeight: checked ? FontWeight.bold : FontWeight.normal,
+                                  color: checked
+                                      ? Colors.white
+                                      : Colors.blue.shade800,
+                                  fontWeight: checked
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                                 selected: checked,
                                 onSelected: isEditing
@@ -1788,11 +2351,14 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                         setState(() {
                                           if (emp.dni == null) return;
                                           if (val) {
-                                            if (!_empleadosSeleccionados.contains(emp.dni!)) {
-                                              _empleadosSeleccionados.add(emp.dni!);
+                                            if (!_empleadosSeleccionados
+                                                .contains(emp.dni!)) {
+                                              _empleadosSeleccionados
+                                                  .add(emp.dni!);
                                             }
                                           } else {
-                                            _empleadosSeleccionados.remove(emp.dni!);
+                                            _empleadosSeleccionados
+                                                .remove(emp.dni!);
                                           }
                                         });
                                       },
@@ -1823,12 +2389,15 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                           Wrap(
                             spacing: 10,
                             runSpacing: 8,
-                            children: List.generate(_diasSemana.length, (i) {
+                            children:
+                                List.generate(_diasSemana.length, (i) {
                               final checked = _diasSeleccionados.contains(i);
                               return FilterChip(
                                 label: Text(_diasSemana[i]),
                                 labelStyle: TextStyle(
-                                  color: checked ? Colors.white : Colors.blue.shade800,
+                                  color: checked
+                                      ? Colors.white
+                                      : Colors.blue.shade800,
                                 ),
                                 selected: checked,
                                 onSelected: isEditing
@@ -1836,7 +2405,10 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                     : (val) {
                                         setState(() {
                                           if (val) {
-                                            if (!_diasSeleccionados.contains(i)) _diasSeleccionados.add(i);
+                                            if (!_diasSeleccionados
+                                                .contains(i)) {
+                                              _diasSeleccionados.add(i);
+                                            }
                                           } else {
                                             _diasSeleccionados.remove(i);
                                           }
@@ -1856,7 +2428,8 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                             children: [
                               Expanded(
                                 child: InkWell(
-                                  onTap: () => _pickHoraPersonalizada(isInicio: true),
+                                  onTap: () =>
+                                      _pickHoraPersonalizada(isInicio: true),
                                   borderRadius: BorderRadius.circular(14),
                                   child: InputDecorator(
                                     decoration: InputDecoration(
@@ -1864,10 +2437,12 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                       filled: true,
                                       fillColor: Colors.blue.shade50,
                                       border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius:
+                                            BorderRadius.circular(14),
                                         borderSide: BorderSide.none,
                                       ),
-                                      suffixIcon: Icon(Icons.access_time, color: Colors.blue.shade400),
+                                      suffixIcon: Icon(Icons.access_time,
+                                          color: Colors.blue.shade400),
                                     ),
                                     child: Text(
                                       _horaInicio != null
@@ -1884,7 +2459,8 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                               const SizedBox(width: 14),
                               Expanded(
                                 child: InkWell(
-                                  onTap: () => _pickHoraPersonalizada(isInicio: false),
+                                  onTap: () =>
+                                      _pickHoraPersonalizada(isInicio: false),
                                   borderRadius: BorderRadius.circular(14),
                                   child: InputDecorator(
                                     decoration: InputDecoration(
@@ -1892,10 +2468,12 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                       filled: true,
                                       fillColor: Colors.blue.shade50,
                                       border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius:
+                                            BorderRadius.circular(14),
                                         borderSide: BorderSide.none,
                                       ),
-                                      suffixIcon: Icon(Icons.access_time, color: Colors.blue.shade400),
+                                      suffixIcon: Icon(Icons.access_time,
+                                          color: Colors.blue.shade400),
                                     ),
                                     child: Text(
                                       _horaFin != null
@@ -1932,7 +2510,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                           ),
                           const SizedBox(height: 18),
 
-                          // Margen antes
+                          // Márgenes
                           TextFormField(
                             controller: _margenCtrl,
                             keyboardType: TextInputType.number,
@@ -1944,22 +2522,26 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                 borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide.none,
                               ),
-                              helperText: 'Minutos antes permitidos para fichar (p. ej. 10)',
+                              helperText:
+                                  'Minutos antes permitidos para fichar (p. ej. 10)',
                             ),
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontWeight: FontWeight.w500,
                             ),
                             validator: (val) {
-                              if (val == null || val.isEmpty) return "Obligatorio";
+                              if (val == null || val.isEmpty) {
+                                return "Obligatorio";
+                              }
                               final n = int.tryParse(val);
-                              if (n == null || n < 0) return "Debe ser número positivo";
+                              if (n == null || n < 0) {
+                                return "Debe ser número positivo";
+                              }
                               return null;
                             },
                           ),
                           const SizedBox(height: 18),
 
-                          // Margen después
                           TextFormField(
                             controller: _margenDespuesCtrl,
                             keyboardType: TextInputType.number,
@@ -1971,16 +2553,21 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                 borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide.none,
                               ),
-                              helperText: 'Minutos después permitidos para fichar (p. ej. 30)',
+                              helperText:
+                                  'Minutos después permitidos para fichar (p. ej. 30)',
                             ),
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontWeight: FontWeight.w500,
                             ),
                             validator: (val) {
-                              if (val == null || val.isEmpty) return "Obligatorio";
+                              if (val == null || val.isEmpty) {
+                                return "Obligatorio";
+                              }
                               final n = int.tryParse(val);
-                              if (n == null || n < 0) return "Debe ser número positivo";
+                              if (n == null || n < 0) {
+                                return "Debe ser número positivo";
+                              }
                               return null;
                             },
                           ),
@@ -1991,16 +2578,22 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              icon: Icon(isEditing ? Icons.save : Icons.add, size: 20),
+                              icon: Icon(isEditing ? Icons.save : Icons.add,
+                                  size: 20),
                               label: Text(
-                                isEditing ? 'Guardar cambios' : 'Crear horarios',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                                isEditing
+                                    ? 'Guardar cambios'
+                                    : 'Crear horarios',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 17),
                               ),
                               onPressed: _isFormValid() ? _guardar : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue.shade700,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
@@ -2012,12 +2605,13 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                       ),
                     ),
                   ),
-                  // Cerrar arriba a la derecha
+                  // Cerrar
                   Positioned(
                     right: 0,
                     top: 0,
                     child: IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 28),
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.grey, size: 28),
                       onPressed: () => Navigator.of(context).pop(),
                       tooltip: 'Cerrar',
                     ),
@@ -2032,7 +2626,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   }
 }
 
-// Puedes dejar tu TimePicker tal cual:
+// Selector de hora tipo rueda
 class _TimePickerWheel extends StatefulWidget {
   final int initialHour;
   final int initialMinute;
@@ -2060,7 +2654,8 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
     _selectedHour = widget.initialHour;
     _selectedMinute = widget.initialMinute;
     _hourController = FixedExtentScrollController(initialItem: _selectedHour);
-    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute);
+    _minuteController =
+        FixedExtentScrollController(initialItem: _selectedMinute);
   }
 
   @override
@@ -2077,18 +2672,23 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
     const TextStyle textStyle = TextStyle(fontSize: 32);
 
     return Container(
-      padding: const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
+      padding:
+          const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -3)),
+          BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, -3)),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Selecciona la hora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text('Selecciona la hora',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2156,10 +2756,15 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar')),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context, TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
+                  Navigator.pop(
+                      context,
+                      TimeOfDay(
+                          hour: _selectedHour, minute: _selectedMinute));
                 },
                 child: const Text('OK'),
               ),

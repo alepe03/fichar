@@ -7,7 +7,9 @@ class HorarioEmpleado {
   final String horaFin;
   final String? nombreTurno;
   final int margenEntradaAntes;
-  final int margenEntradaDespues; // <- NUEVO
+  final int margenEntradaDespues;
+  final String? horasOrdinarias;     // calculado en backend
+  final int? horasOrdinariasMin;     // calculado en backend
 
   HorarioEmpleado({
     this.id,
@@ -18,44 +20,54 @@ class HorarioEmpleado {
     required this.horaFin,
     this.nombreTurno,
     this.margenEntradaAntes = 10,
-    this.margenEntradaDespues = 30, // Valor por defecto a 30 min
+    this.margenEntradaDespues = 30,
+    this.horasOrdinarias,
+    this.horasOrdinariasMin,
   });
 
   factory HorarioEmpleado.fromMap(Map<String, dynamic> map) {
+    String? _s(dynamic v) => v?.toString();
+    int? _i(dynamic v) => v is int ? v : int.tryParse('${v ?? ''}');
+
     return HorarioEmpleado(
-      id: map['id'] is int ? map['id'] : int.tryParse('${map['id']}'),
-      dniEmpleado: map['dni_empleado'],
-      cifEmpresa: map['cif_empresa'],
-      diaSemana: map['dia_semana'] is int ? map['dia_semana'] : int.tryParse('${map['dia_semana']}') ?? 0,
-      horaInicio: map['hora_inicio'],
-      horaFin: map['hora_fin'],
-      nombreTurno: map['nombre_turno'],
-      margenEntradaAntes: map['margen_entrada_antes'] is int
-          ? map['margen_entrada_antes']
-          : int.tryParse('${map['margen_entrada_antes'] ?? "10"}') ?? 10,
-      margenEntradaDespues: map['margen_entrada_despues'] is int
-          ? map['margen_entrada_despues']
-          : int.tryParse('${map['margen_entrada_despues'] ?? "30"}') ?? 30,
+      id: _i(map['id']),
+      dniEmpleado: _s(map['dni_empleado']) ?? '',
+      cifEmpresa: _s(map['cif_empresa']) ?? '',
+      diaSemana: _i(map['dia_semana']) ?? 0,
+      horaInicio: _s(map['hora_inicio']) ?? '',
+      horaFin: _s(map['hora_fin']) ?? '',
+      nombreTurno: _s(map['nombre_turno']),
+      margenEntradaAntes: _i(map['margen_entrada_antes']) ?? 10,
+      margenEntradaDespues: _i(map['margen_entrada_despues']) ?? 30,
+      horasOrdinarias: _s(map['horas_ordinarias']),
+      horasOrdinariasMin: _i(map['horas_ordinarias_min']),
     );
   }
 
   factory HorarioEmpleado.fromCsv(String line) {
-    final fields = line.split(';');
+    // Limpia CR/LF y divide
+    final fields = line.replaceAll('\r', '').trimRight().split(';');
+
+    String? getS(int i) => (i < fields.length ? fields[i] : null)?.trim();
+    int? getI(int i) => int.tryParse(getS(i) ?? '');
+
     return HorarioEmpleado(
-      id: int.tryParse(fields[0]),
-      dniEmpleado: fields[1],
-      cifEmpresa: fields[2],
-      diaSemana: int.tryParse(fields[3]) ?? 0,
-      horaInicio: fields[4],
-      horaFin: fields[5],
-      nombreTurno: fields.length > 6 ? fields[6] : null,
-      margenEntradaAntes: fields.length > 7 ? int.tryParse(fields[7]) ?? 10 : 10,
-      margenEntradaDespues: fields.length > 8 ? int.tryParse(fields[8]) ?? 30 : 30,
+      id: getI(0),
+      dniEmpleado: getS(1) ?? '',
+      cifEmpresa: getS(2) ?? '',
+      diaSemana: getI(3) ?? 0,
+      horaInicio: getS(4) ?? '',
+      horaFin: getS(5) ?? '',
+      nombreTurno: getS(6),
+      margenEntradaAntes: getI(7) ?? 10,
+      margenEntradaDespues: getI(8) ?? 30,
+      horasOrdinarias: getS(9),
+      horasOrdinariasMin: getI(10),
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'id': id,
       'dni_empleado': dniEmpleado,
       'cif_empresa': cifEmpresa,
@@ -66,12 +78,19 @@ class HorarioEmpleado {
       'margen_entrada_antes': margenEntradaAntes,
       'margen_entrada_despues': margenEntradaDespues,
     };
+    // Importante: guardar lo que llega del backend para que la UI lo tenga
+    if (horasOrdinarias != null) map['horas_ordinarias'] = horasOrdinarias;
+    if (horasOrdinariasMin != null) map['horas_ordinarias_min'] = horasOrdinariasMin;
+    return map;
   }
 
   @override
   String toString() {
     return 'HorarioEmpleado{id: $id, dni: $dniEmpleado, empresa: $cifEmpresa, '
         'dia: $diaSemana, $horaInicio-$horaFin, turno: $nombreTurno, '
-        'margenEntradaAntes: $margenEntradaAntes, margenEntradaDespues: $margenEntradaDespues}';
+        'margenEntradaAntes: $margenEntradaAntes, margenEntradaDespues: $margenEntradaDespues, '
+        'horasOrdinarias: $horasOrdinarias, horasOrdinariasMin: $horasOrdinariasMin}';
   }
 }
+
+

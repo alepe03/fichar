@@ -5,42 +5,31 @@ import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../models/horario_empleado.dart';
 
-/// Clase singleton para gestionar el acceso a la base de datos local SQLite
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
   DatabaseHelper._init();
 
-  /// Getter para obtener la instancia de la base de datos, la inicializa si es necesario
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('fichador.db');
     return _database!;
   }
 
-  /// Inicializa la base de datos, eligiendo la ruta según si es web o no
   Future<Database> _initDB(String filePath) async {
     final dbPath = kIsWeb ? filePath : join(await getDatabasesPath(), filePath);
-
-    print('[DEBUG][DatabaseHelper] Ruta real de la BD: $dbPath');
-
     final db = await openDatabase(
       dbPath,
-      version: 10, // <-- ¡IMPORTANTE! Ahora versión 10
+      version: 12, // v12 incluye horas_ordinarias y horas_ordinarias_min
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
-
-    print('[DEBUG][DatabaseHelper] Base de datos abierta/cargada');
     return db;
   }
 
-  /// Crea las tablas necesarias en la base de datos si no existen
   Future _createDB(Database db, int version) async {
-    print('[DEBUG][DatabaseHelper] Creando estructura de tablas...');
-
-    // Tabla de empleados (ahora con id y pin_fichaje)
+    // empleados
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empleados (
         usuario TEXT NOT NULL,
@@ -62,7 +51,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de empresas
+    // empresas (AHORA con max_usuarios_activos, cuota, observaciones)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS empresas (
         cif_empresa TEXT PRIMARY KEY,
@@ -71,11 +60,14 @@ class DatabaseHelper {
         telefono TEXT,
         codigo_postal TEXT,
         email TEXT,
-        basedatos TEXT
+        basedatos TEXT,
+        max_usuarios_activos INTEGER,
+        cuota REAL,
+        observaciones TEXT
       )
     ''');
 
-    // Tabla de sucursales
+    // sucursales
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sucursales (
         cif_empresa TEXT NOT NULL,
@@ -87,7 +79,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de incidencias (se borra y recrea por si hay cambios)
+    // incidencias
     await db.execute('DROP TABLE IF EXISTS incidencias;');
     await db.execute('''
       CREATE TABLE incidencias (
@@ -98,7 +90,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de registros históricos de fichajes (ahora con uuid)
+    // historico
     await db.execute('''
       CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +111,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Tabla de horarios de empleados CON LOS DOS CAMPOS DE MARGEN
+    // horarios_empleado con nuevos campos
     await db.execute('''
       CREATE TABLE IF NOT EXISTS horarios_empleado (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,14 +122,13 @@ class DatabaseHelper {
         hora_fin TEXT NOT NULL,
         nombre_turno TEXT,
         margen_entrada_antes INTEGER NOT NULL DEFAULT 10,
-        margen_entrada_despues INTEGER NOT NULL DEFAULT 30
+        margen_entrada_despues INTEGER NOT NULL DEFAULT 30,
+        horas_ordinarias TEXT,
+        horas_ordinarias_min INTEGER
       )
     ''');
-
-    print('[DEBUG][DatabaseHelper] Tablas creadas (si no existían).');
   }
 
-  /// Gestiona las migraciones de la base de datos entre versiones
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE historico ADD COLUMN latitud REAL');
@@ -165,53 +156,51 @@ class DatabaseHelper {
         )
       ''');
     }
-    // MIGRACIÓN A V7: Añade la columna margen_entrada_antes si vienes de una versión anterior
     if (oldVersion < 7) {
       try {
         await db.execute('ALTER TABLE horarios_empleado ADD COLUMN margen_entrada_antes INTEGER NOT NULL DEFAULT 10');
-        print('[DEBUG][DatabaseHelper] Columna margen_entrada_antes añadida a horarios_empleado');
-      } catch (e) {
-        print('[DatabaseHelper][Upgrade] Error añadiendo columna margen_entrada_antes: $e');
-      }
+      } catch (_) {}
     }
-    // MIGRACIÓN A V8: Añade la columna margen_entrada_despues si vienes de una versión anterior
     if (oldVersion < 8) {
       try {
         await db.execute('ALTER TABLE horarios_empleado ADD COLUMN margen_entrada_despues INTEGER NOT NULL DEFAULT 30');
-        print('[DEBUG][DatabaseHelper] Columna margen_entrada_despues añadida a horarios_empleado');
-      } catch (e) {
-        print('[DatabaseHelper][Upgrade] Error añadiendo columna margen_entrada_despues: $e');
-      }
+      } catch (_) {}
     }
-    // MIGRACIÓN A V9: Añade columnas id y pin_fichaje a empleados si no existían
     if (oldVersion < 9) {
       try {
-        await db.execute('ALTER TABLE empleados ADD COLUMN id INTEGER;');
-        await db.execute('ALTER TABLE empleados ADD COLUMN pin_fichaje TEXT;');
-        print('[DEBUG][DatabaseHelper] Columnas id y pin_fichaje añadidas a empleados');
-      } catch (e) {
-        print('[DatabaseHelper][Upgrade] Error añadiendo columnas id/pin_fichaje: $e');
-      }
+        await db.execute('ALTER TABLE empleados ADD COLUMN id INTEGER');
+        await db.execute('ALTER TABLE empleados ADD COLUMN pin_fichaje TEXT');
+      } catch (_) {}
     }
-    // MIGRACIÓN A V10: Añade columna uuid a historico
     if (oldVersion < 10) {
       try {
-        await db.execute('ALTER TABLE historico ADD COLUMN uuid TEXT UNIQUE;');
-        print('[DEBUG][DatabaseHelper] Columna uuid añadida a historico');
-      } catch (e) {
-        print('[DatabaseHelper][Upgrade] Error añadiendo columna uuid: $e');
-      }
+        await db.execute('ALTER TABLE historico ADD COLUMN uuid TEXT UNIQUE');
+      } catch (_) {}
+    }
+    if (oldVersion < 11) {
+      try {
+        await db.execute('ALTER TABLE empresas ADD COLUMN max_usuarios_activos INTEGER');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE empresas ADD COLUMN cuota REAL');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE empresas ADD COLUMN observaciones TEXT');
+      } catch (_) {}
+    }
+    // v12: horarios_empleado obtiene horas_ordinarias y horas_ordinarias_min
+    if (oldVersion < 12) {
+      try { await db.execute('ALTER TABLE horarios_empleado ADD COLUMN horas_ordinarias TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE horarios_empleado ADD COLUMN horas_ordinarias_min INTEGER'); } catch (_) {}
     }
   }
 
   // ==================== HISTORICO ======================
-  /// Inserta un registro en la tabla historico
   Future<int> insertHistorico(Historico h) async {
     final db = await database;
-    return await db.insert('historico', h.toDbMap());
+    return db.insert('historico', h.toDbMap());
   }
 
-  /// Actualiza el estado de sincronización de un registro histórico
   Future<int> actualizarSincronizado(int id, bool sincronizado) async {
     final db = await database;
     return db.update(
@@ -222,39 +211,30 @@ class DatabaseHelper {
     );
   }
 
-  /// Devuelve la lista de registros históricos pendientes de sincronizar
   Future<List<Historico>> historicosPendientes() async {
     final db = await database;
     final maps = await db.query('historico', where: 'sincronizado = 0');
     return maps.map((m) => Historico.fromMap(m)).toList();
   }
 
-  /// Borra todos los registros históricos de una empresa concreta
   Future<int> borrarHistoricosPorEmpresa(String cifEmpresa) async {
     final db = await database;
-    return await db.delete('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
+    return db.delete('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
   }
 
   // ==================== INCIDENCIAS ======================
-  /// Carga las incidencias locales de una empresa concreta
   Future<List<Incidencia>> cargarIncidenciasLocal(String cifEmpresa) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'incidencias',
-      where: 'cif_empresa = ?',
-      whereArgs: [cifEmpresa],
-    );
+    final maps = await db.query('incidencias', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
     return maps.map((m) => Incidencia.fromMap(m)).toList();
   }
 
   // ==================== HORARIOS EMPLEADO ======================
-  /// Inserta un nuevo horario de empleado
   Future<int> insertarHorarioEmpleado(HorarioEmpleado h) async {
     final db = await database;
-    return await db.insert('horarios_empleado', h.toMap());
+    return db.insert('horarios_empleado', h.toMap());
   }
 
-  /// Carga los horarios de un empleado concreto en una empresa
   Future<List<HorarioEmpleado>> cargarHorariosEmpleado(String dniEmpleado, String cifEmpresa) async {
     final db = await database;
     final maps = await db.query(
@@ -265,35 +245,19 @@ class DatabaseHelper {
     return maps.map((m) => HorarioEmpleado.fromMap(m)).toList();
   }
 
-  /// Carga todos los horarios de una empresa
   Future<List<HorarioEmpleado>> cargarHorariosEmpresa(String cifEmpresa) async {
     final db = await database;
-    final maps = await db.query(
-      'horarios_empleado',
-      where: 'cif_empresa = ?',
-      whereArgs: [cifEmpresa],
-    );
+    final maps = await db.query('horarios_empleado', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
     return maps.map((m) => HorarioEmpleado.fromMap(m)).toList();
   }
 
-  /// Actualiza un horario de empleado existente
   Future<int> actualizarHorarioEmpleado(HorarioEmpleado h) async {
     final db = await database;
-    return await db.update(
-      'horarios_empleado',
-      h.toMap(),
-      where: 'id = ?',
-      whereArgs: [h.id],
-    );
+    return db.update('horarios_empleado', h.toMap(), where: 'id = ?', whereArgs: [h.id]);
   }
 
-  /// Borra un horario de empleado por su ID
   Future<int> borrarHorarioEmpleado(int id) async {
     final db = await database;
-    return await db.delete(
-      'horarios_empleado',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return db.delete('horarios_empleado', where: 'id = ?', whereArgs: [id]);
   }
 }

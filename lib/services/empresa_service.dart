@@ -4,9 +4,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/empresa.dart';
-import '../config.dart'; // Para BASE_URL
+import '../config.dart'; // BASE_URL
 
 class EmpresaService {
+  // Normaliza doubles a string con punto decimal
+  static String _fmtCuota(double? v) {
+    if (v == null) return '';
+    // evita coma decimal si el valor viniera ya con coma en algún sitio
+    return v.toString().replaceAll(',', '.');
+  }
+
   /// 1) Inserta una empresa en la API (Code=501)
   static Future<String> insertarEmpresaRemoto({
     required Empresa empresa,
@@ -24,6 +31,9 @@ class EmpresaService {
       'email': empresa.email ?? '',
       'basedatos': empresa.basedatos ?? '',
       'max_usuarios': maxUsuarios.toString(),
+      // NUEVO
+      'cuota': _fmtCuota(empresa.cuota),
+      'observaciones': empresa.observaciones ?? '',
     };
 
     final response = await http.post(
@@ -58,7 +68,6 @@ class EmpresaService {
       throw Exception('API: $body');
     }
 
-    // Aquí offloadeamos el parseo a otro isolate
     return compute(_parseEmpresas, body);
   }
 
@@ -79,6 +88,9 @@ class EmpresaService {
       'email': empresa.email ?? '',
       'basedatos': empresa.basedatos ?? '',
       'max_usuarios': maxUsuarios.toString(),
+      // NUEVO
+      'cuota': _fmtCuota(empresa.cuota),
+      'observaciones': empresa.observaciones ?? '',
     };
 
     final response = await http.post(
@@ -98,19 +110,29 @@ class EmpresaService {
 
 /// Función de parseo que correrá en un isolate
 List<Empresa> _parseEmpresas(String body) {
-  final lines = LineSplitter.split(body).toList();
+  final lines = const LineSplitter().convert(body);
   if (lines.length < 2) return [];
 
-  final headers = lines.first.split(';');
+  // Limpia cabeceras por posibles \r y descarta la cabecera vacía si hay ';' final
+  final rawHeaders = lines.first.split(';').map((h) => h.trim().replaceAll('\r', '')).toList();
+  final headers = rawHeaders.where((h) => h.isNotEmpty).toList();
+
   final empresas = <Empresa>[];
 
   for (var i = 1; i < lines.length; i++) {
     final cols = lines[i].split(';');
-    if (cols.length < headers.length) continue;
+    if (cols.isEmpty || cols.length < 2) continue; // línea vacía o basura
+
     final map = <String, String>{};
-    for (var j = 0; j < headers.length; j++) {
-      map[headers[j]] = cols[j];
+    final len = cols.length < headers.length ? cols.length : headers.length;
+    for (var j = 0; j < len; j++) {
+      map[headers[j]] = cols[j].replaceAll('\r', '');
     }
+    // Relleno por si el backend dejó el último valor vacío antes del ';'
+    for (var j = len; j < headers.length; j++) {
+      map[headers[j]] = '';
+    }
+
     empresas.add(Empresa.fromCsvMap(map));
   }
 

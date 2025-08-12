@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/empleado.dart';
 import '../models/historico.dart';
@@ -13,8 +15,10 @@ import '../services/historico_service.dart';
 import '../services/horarios_service.dart';
 
 /// Provider principal para la gestión de datos de la empresa y sincronización.
-/// Incluye empleados, históricos, incidencias y horarios.
+/// Incluye empleados, históricos, incidencias, horarios y (nuevo) lectura del
+/// max_usuarios_activos de la empresa para soportar el límite de usuarios.
 class AdminProvider extends ChangeNotifier {
+  // Estado principal en memoria
   List<Empleado> empleados = [];
   List<Historico> historicos = [];
   List<Incidencia> incidencias = [];
@@ -22,7 +26,168 @@ class AdminProvider extends ChangeNotifier {
 
   final String cifEmpresa;
 
+  // ===== Límite de usuarios activos =====
+  int? _maxUsuariosActivos; // puede ser null si el backend no lo expone o no cargó
+  int? get maxUsuariosActivos => _maxUsuariosActivos;
+
+  // Activos que "cuentan" (excluye supervisor)
+  int get activosQueCuentan => empleados
+      .where((e) => e.cifEmpresa == cifEmpresa && e.activo == 1 && e.rol != 'supervisor')
+      .length;
+
   AdminProvider(this.cifEmpresa);
+
+  // ==================== BOOT / CARGA INICIAL ====================
+  Future<void> cargarDatosIniciales() async {
+    // 1) Historico primero (como ya hacías)
+    await sincronizarHistoricoCompleto();
+
+    // 2) Traer empresas (para obtener max_usuarios_activos) y guardarlo local
+    //    + setear _maxUsuariosActivos para esta empresa
+    await _sincronizarEmpresasYLeerMax();
+
+    // 3) Empleados (descarga -> guarda -> lee)
+    await cargarEmpleados();                // por si ya hay algo local
+    await sincronizarEmpleadosCompleto();   // baja remoto y vuelve a cargar
+
+    // 4) Incidencias
+    await cargarIncidencias();
+  }
+
+  // ==================== EMPRESAS (solo max_usuarios_activos) ====================
+  /// Descarga el CSV de empresas (Code=500), hace upsert local y actualiza
+  /// _maxUsuariosActivos para [cifEmpresa]. No crea servicios nuevos para mantenerlo simple.
+  Future<void> _sincronizarEmpresasYLeerMax() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    final baseUrl = prefs.getString('baseUrl') ?? '';
+    if (token.isEmpty || baseUrl.isEmpty) {
+      // Si no hay credenciales, intenta leer desde local lo que hubiera:
+      _maxUsuariosActivos = await _leerMaxUsuariosDesdeLocal(cifEmpresa);
+      notifyListeners();
+      return;
+    }
+
+    // Code=500 -> LeoEmpresas(), tu backend devuelve CSV con cabecera:
+    // "cif_empresa;nombre;direccion;telefono;codigo_postal;email;basedatos;max_usuarios_activos;"
+    final url = Uri.parse('$baseUrl?Token=$token&Bd=qame400&Code=500');
+
+    try {
+      final resp = await http.get(url);
+      if (resp.statusCode != 200) {
+        // En caso de error de red: intenta leer local
+        _maxUsuariosActivos = await _leerMaxUsuariosDesdeLocal(cifEmpresa);
+        notifyListeners();
+        return;
+      }
+
+      // Parse rápido del CSV y upsert en SQLite
+      await _guardarEmpresasCsvLocal(resp.body);
+
+      // Refresca el valor en memoria
+      _maxUsuariosActivos = await _leerMaxUsuariosDesdeLocal(cifEmpresa);
+      notifyListeners();
+    } catch (e) {
+      // En caso de excepción, intenta local y sigue
+      _maxUsuariosActivos = await _leerMaxUsuariosDesdeLocal(cifEmpresa);
+      // ignore: avoid_print
+      print('[AdminProvider] Error sincronizando empresas: $e');
+      notifyListeners();
+    }
+  }
+
+  /// Guarda/actualiza en SQLite las empresas que vengan en el CSV.
+  /// Nos interesa principalmente el campo max_usuarios_activos.
+  Future<void> _guardarEmpresasCsvLocal(String csv) async {
+    final db = await DatabaseHelper.instance.database;
+    final lines = csv.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    if (lines.isEmpty) return;
+
+    // Quitar cabecera si la tiene
+    final header = lines.first.trim();
+    int startIdx = 0;
+    if (header.toLowerCase().startsWith('cif_empresa;')) {
+      startIdx = 1;
+    }
+
+    // Campo esperado en posición 7 (último) según tu PHP,
+    // pero no dependemos del orden: buscamos índice por nombre en cabecera si existe.
+    int idxCif = 0, idxMax = 7;
+    if (startIdx == 1) {
+      final cols = header.split(';');
+      idxCif = cols.indexOf('cif_empresa');
+      idxMax = cols.indexOf('max_usuarios_activos');
+      if (idxCif < 0) idxCif = 0; // fallback
+      if (idxMax < 0) idxMax = 7; // fallback
+    }
+
+    // Transacción por rendimiento/atomicidad
+    await db.transaction((txn) async {
+      for (int i = startIdx; i < lines.length; i++) {
+        final raw = lines[i].trim();
+        if (raw.isEmpty) continue;
+        final parts = raw.split(';');
+
+        // Seguro ante líneas cortas
+        if (parts.isEmpty) continue;
+
+        final cif = (idxCif < parts.length) ? parts[idxCif].trim() : '';
+        if (cif.isEmpty) continue;
+
+        // Parse del max (puede venir vacío)
+        int? maxActivos;
+        if (idxMax < parts.length) {
+          final val = parts[idxMax].trim();
+          if (val.isNotEmpty) {
+            final n = int.tryParse(val);
+            if (n != null) maxActivos = n;
+          }
+        }
+
+        // Upsert sencillo: si existe fila, actualiza; si no, inserta.
+        // No tenemos todos los campos aquí, pero no pasa nada: solo necesitamos el max_usuarios_activos.
+        // Intentamos update primero:
+        final updated = await txn.update(
+          'empresas',
+          {'max_usuarios_activos': maxActivos},
+          where: 'cif_empresa = ?',
+          whereArgs: [cif],
+        );
+
+        if (updated == 0) {
+          // Inserta mínima si no existe
+          await txn.insert('empresas', {
+            'cif_empresa': cif,
+            'nombre': '', // placeholders opcionales
+            'direccion': null,
+            'telefono': null,
+            'codigo_postal': null,
+            'email': null,
+            'basedatos': null,
+            'max_usuarios_activos': maxActivos,
+          });
+        }
+      }
+    });
+  }
+
+  /// Lee el max_usuarios_activos de SQLite para un CIF
+  Future<int?> _leerMaxUsuariosDesdeLocal(String cif) async {
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query(
+      'empresas',
+      columns: ['max_usuarios_activos'],
+      where: 'cif_empresa = ?',
+      whereArgs: [cif],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final v = rows.first['max_usuarios_activos'];
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
 
   // ==================== EMPLEADOS ====================
   Future<void> cargarEmpleados() async {
@@ -37,70 +202,40 @@ class AdminProvider extends ChangeNotifier {
     final token = prefs.getString('token') ?? '';
     final baseUrl = prefs.getString('baseUrl') ?? '';
 
-    if (token.isEmpty || baseUrl.isEmpty) return;
+    if (token.isEmpty || baseUrl.isEmpty) {
+      await cargarEmpleados();
+      return;
+    }
 
     try {
       await EmpleadoService.sincronizarEmpleadosCompleto(token, baseUrl, cifEmpresa);
       await cargarEmpleados();
     } catch (e) {
+      // ignore: avoid_print
       print('[AdminProvider] Error sincronizando empleados: $e');
+      await cargarEmpleados(); // al menos refresca local
     }
-  }
-
-  Future<void> cargarHistoricos() async {
-    final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
-    historicos = maps.map((m) => Historico.fromMap(m)).toList();
-    notifyListeners();
-  }
-
-  Future<void> cargarIncidencias() async {
-    incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
-    notifyListeners();
-  }
-
-  Future<void> sincronizarHistoricoCompleto() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
-    final baseUrl = prefs.getString('baseUrl') ?? '';
-
-    if (token.isEmpty || baseUrl.isEmpty) return;
-
-    try {
-      await HistoricoService.sincronizarHistoricoCompleto(token, baseUrl, cifEmpresa);
-      await cargarHistoricos();
-    } catch (e) {
-      print('[AdminProvider] Error sincronizando histórico: $e');
-    }
-  }
-
-  Future<void> cargarDatosIniciales() async {
-    await sincronizarHistoricoCompleto();
-    await cargarEmpleados();
-    await cargarIncidencias();
   }
 
   Future<String?> addEmpleado(Empleado empleado) async {
-  final prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('token') ?? '';
-  try {
-    final respuesta = await EmpleadoService.insertarEmpleadoRemoto(
-      empleado: empleado,
-      token: token,
-    );
-    if (respuesta['ok'] == true) {
-      await sincronizarEmpleadosCompleto();
-      // Si quieres usar el PIN generado, está en respuesta['pin']
-      // Puedes devolverlo, mostrarlo, lo que necesites.
-      return null;
-    } else {
-      return respuesta['mensaje']?.toString();
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    try {
+      final respuesta = await EmpleadoService.insertarEmpleadoRemoto(
+        empleado: empleado,
+        token: token,
+      );
+      if (respuesta['ok'] == true) {
+        await sincronizarEmpleadosCompleto();
+        // Tras alta, no hace falta recargar empresas; el max no cambia.
+        return null;
+      } else {
+        return respuesta['mensaje']?.toString();
+      }
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
-  } catch (e) {
-    return e.toString().replaceFirst('Exception: ', '');
   }
-}
-
 
   Future<String?> updateEmpleado(Empleado empleado, String usuarioOriginal) async {
     final prefs = await SharedPreferences.getInstance();
@@ -180,7 +315,40 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  // ==================== HISTORICO ====================
+  Future<void> cargarHistoricos() async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query('historico', where: 'cif_empresa = ?', whereArgs: [cifEmpresa]);
+    historicos = maps.map((m) => Historico.fromMap(m)).toList();
+    notifyListeners();
+  }
+
+  Future<void> sincronizarHistoricoCompleto() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+    final baseUrl = prefs.getString('baseUrl') ?? '';
+
+    if (token.isEmpty || baseUrl.isEmpty) {
+      await cargarHistoricos();
+      return;
+    }
+
+    try {
+      await HistoricoService.sincronizarHistoricoCompleto(token, baseUrl, cifEmpresa);
+      await cargarHistoricos();
+    } catch (e) {
+      // ignore: avoid_print
+      print('[AdminProvider] Error sincronizando histórico: $e');
+      await cargarHistoricos(); // intenta al menos local
+    }
+  }
+
   // ==================== INCIDENCIAS ====================
+  Future<void> cargarIncidencias() async {
+    incidencias = await IncidenciaService.cargarIncidenciasLocal(cifEmpresa);
+    notifyListeners();
+  }
+
   Future<String?> addIncidencia(Incidencia incidencia) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -261,6 +429,7 @@ class AdminProvider extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e) {
+      // ignore: avoid_print
       print('[AdminProvider.cargarHorariosEmpleado] Error: $e');
       horarios = [];
       notifyListeners();
@@ -283,6 +452,7 @@ class AdminProvider extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e) {
+      // ignore: avoid_print
       print('[AdminProvider.cargarHorariosEmpresa] Error: $e');
       horarios = [];
       notifyListeners();
@@ -325,10 +495,10 @@ class AdminProvider extends ChangeNotifier {
         await HorariosService.insertarHorarioLocal(horario);
       } else {
         error ??= 'No se pudo crear el horario para ${horario.dniEmpleado}, día ${horario.diaSemana}.';
-        // Puedes elegir si seguir o abortar aquí, según política de UX
+        // Puedes decidir si abortar aquí o seguir con el resto
       }
     }
-    // Recarga sólo una vez tras todo el lote
+    // Recarga una sola vez tras todo el lote
     await cargarHorariosEmpresa(horariosLote.first.cifEmpresa);
     return error;
   }
