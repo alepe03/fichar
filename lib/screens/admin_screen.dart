@@ -777,9 +777,8 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     );
   }
 }
-// ===== Fichajes Tab =====
 
-
+// FichajesTab.dart
 /// Agregado por usuario para el resumen
 class _Agg {
   int trabajadas = 0; // minutos
@@ -799,8 +798,8 @@ class _FichajesTabState extends State<FichajesTab> {
   int _selectedMonth = DateTime.now().month;
   String? _selectedUsuario;
 
-  // --- Config: cambia a false si tu diaSemana es 0..6
-  static const bool kMondayIs1 = true;
+  // --- Config: tu BD usa 0..6 con 0=Lunes -> deja esto en false
+  static const bool kMondayIs1 = false; // FIX
 
   // ------------------ UI helpers ------------------
   List<DropdownMenuItem<int>> _buildYears() {
@@ -834,7 +833,8 @@ class _FichajesTabState extends State<FichajesTab> {
   List<Historico> _filtrarRegistros(List<Historico> registros) {
     return registros.where((reg) {
       if (_selectedUsuario != null && reg.usuario != _selectedUsuario) return false;
-      final fechaStr = (reg.tipo?.toLowerCase() == 'salida') ? reg.fechaSalida : reg.fechaEntrada;
+      final fechaStr =
+          (reg.tipo?.toLowerCase() == 'salida') ? reg.fechaSalida : reg.fechaEntrada;
       if (fechaStr == null || fechaStr.isEmpty) return false;
       final dt = DateTime.tryParse(fechaStr);
       if (dt == null) return false;
@@ -854,8 +854,14 @@ class _FichajesTabState extends State<FichajesTab> {
     final List<SesionTrabajo> sesiones = [];
     porUsuario.forEach((usuario, regsUsuario) {
       regsUsuario.sort((a, b) {
-        final fa = (a.tipo?.toLowerCase() == 'salida' ? a.fechaSalida : a.fechaEntrada) ?? '';
-        final fb = (b.tipo?.toLowerCase() == 'salida' ? b.fechaSalida : b.fechaEntrada) ?? '';
+        final fa = (a.tipo?.toLowerCase() == 'salida'
+                ? a.fechaSalida
+                : a.fechaEntrada) ??
+            '';
+        final fb = (b.tipo?.toLowerCase() == 'salida'
+                ? b.fechaSalida
+                : b.fechaEntrada) ??
+            '';
         return fa.compareTo(fb);
       });
 
@@ -885,15 +891,20 @@ class _FichajesTabState extends State<FichajesTab> {
             incidenciasPendientes.clear();
           } else {
             // Salida sin entrada
-            sesiones.add(SesionTrabajo(entrada: null, salida: reg, incidencias: const []));
+            sesiones.add(
+                SesionTrabajo(entrada: null, salida: reg, incidencias: const []));
           }
-        } else if (t != null && t.startsWith('incidencia')) {
+        } else if (t != null &&
+            (t.startsWith('incidencia') || t.startsWith('Incidencia'))) {
           String contexto = 'Sin entrada/salida';
-          if (t == 'incidenciaentrada') contexto = 'Salida';
-          if (t == 'incidenciasalida') contexto = 'Entrada';
+          if (t.toLowerCase() == 'incidenciaentrada') contexto = 'Salida';
+          if (t.toLowerCase() == 'incidenciasalida') contexto = 'Entrada';
 
           if (entradaPendiente == null && contexto == 'Sin entrada/salida') {
-            sesiones.add(SesionTrabajo(entrada: null, salida: null, incidencias: [IncidenciaEnSesion(reg, contexto)]));
+            sesiones.add(SesionTrabajo(
+                entrada: null,
+                salida: null,
+                incidencias: [IncidenciaEnSesion(reg, contexto)]));
           } else {
             incidenciasPendientes.add(IncidenciaEnSesion(reg, contexto));
           }
@@ -912,8 +923,10 @@ class _FichajesTabState extends State<FichajesTab> {
 
       // Incidencias sueltas residual
       if (incidenciasPendientes.isNotEmpty) {
-        for (var inc in incidenciasPendientes.where((x) => x.contexto == 'Sin entrada/salida')) {
-          sesiones.add(SesionTrabajo(entrada: null, salida: null, incidencias: [inc]));
+        for (var inc in incidenciasPendientes
+            .where((x) => x.contexto == 'Sin entrada/salida')) {
+          sesiones.add(
+              SesionTrabajo(entrada: null, salida: null, incidencias: [inc]));
         }
       }
     });
@@ -949,22 +962,29 @@ class _FichajesTabState extends State<FichajesTab> {
 
   int _weekdayToDiaSemana(DateTime d) {
     // DateTime.weekday: 1=Mon..7=Sun
-    if (kMondayIs1) return d.weekday; // 1..7
-    // Si usas 0..6 (0=Lunes)
-    return (d.weekday % 7); // 1..7 -> 1..6,0 => 0..6
+    if (kMondayIs1) {
+      return d.weekday; // 1..7 (1=Lunes)
+    } else {
+      // FIX: BD 0..6 (0=Lunes) => rotate-left
+      // 1(Lun)->0, 2(Mar)->1, ..., 7(Dom)->6
+      return (d.weekday + 6) % 7;
+    }
   }
 
-  DateTime? _parse(String? s) => (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
+  DateTime? _parse(String? s) =>
+      (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
 
   // ------------------ Horas ordinarias (lookup) ------------------
   /// (dni, diaSemana) -> minutos ordinarios del día (sumados si hay varios turnos)
-  Map<String, Map<int, int>> _buildOrdinariasIndex(List<HorarioEmpleado> horarios) {
+  Map<String, Map<int, int>> _buildOrdinariasIndex(
+      List<HorarioEmpleado> horarios) {
     final Map<String, Map<int, int>> idx = {};
     for (final h in horarios) {
       if (h.dniEmpleado.isEmpty) continue;
       final dni = h.dniEmpleado;
       final ds = h.diaSemana;
-      final min = h.horasOrdinariasMin ?? _tryParseHHmmToMinutes(h.horasOrdinarias);
+      final min =
+          h.horasOrdinariasMin ?? _tryParseHHmmToMinutes(h.horasOrdinarias);
       if (min == null) continue;
 
       idx.putIfAbsent(dni, () => {});
@@ -973,10 +993,11 @@ class _FichajesTabState extends State<FichajesTab> {
     return idx;
   }
 
+  // FIX: tolera HH:MM y HH:MM:SS
   int? _tryParseHHmmToMinutes(String? hhmm) {
     if (hhmm == null || hhmm.isEmpty) return null;
     final parts = hhmm.split(':');
-    if (parts.length != 2) return null;
+    if (parts.length < 2) return null;
     final h = int.tryParse(parts[0]);
     final m = int.tryParse(parts[1]);
     if (h == null || m == null) return null;
@@ -984,7 +1005,8 @@ class _FichajesTabState extends State<FichajesTab> {
   }
 
   /// Devuelve minutos ordinarios para un dni y fecha
-  int? _ordinariasForDay(Map<String, Map<int, int>> idx, String dni, DateTime fecha) {
+  int? _ordinariasForDay(
+      Map<String, Map<int, int>> idx, String dni, DateTime fecha) {
     final ds = _weekdayToDiaSemana(fecha);
     final byDni = idx[dni];
     if (byDni == null) return null;
@@ -1006,16 +1028,17 @@ class _FichajesTabState extends State<FichajesTab> {
     const PdfColor blanco = PdfColor.fromInt(0xFFFFFFFF);
     const PdfColor grisTexto = PdfColor.fromInt(0xFF444444);
 
-    // ✅ ThemeData (solo theme, sin pageTheme)
+    // Theme más compacto
     final theme = pw.ThemeData(
-      defaultTextStyle: const pw.TextStyle(color: grisTexto, fontSize: 10),
+      defaultTextStyle: const pw.TextStyle(color: grisTexto, fontSize: 9),
     );
 
     // Índice de ordinarias
     final ordinariasIdx = _buildOrdinariasIndex(horarios);
 
     // Cabecera de documento
-    final titulo = 'Fichajes ${_selectedYear}-${_selectedMonth.toString().padLeft(2, '0')}'
+    final titulo =
+        'Fichajes ${_selectedYear}-${_selectedMonth.toString().padLeft(2, '0')}'
         '${_selectedUsuario != null ? ' · ${_selectedUsuario}' : ''}';
 
     // Cabeceras tabla principal
@@ -1041,7 +1064,13 @@ class _FichajesTabState extends State<FichajesTab> {
           children: headers
               .map((h) => pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
-                    child: pw.Text(h, style: pw.TextStyle(color: blanco, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    child: pw.Text(
+                      h,
+                      style: pw.TextStyle(
+                          color: blanco,
+                          fontSize: 9.5,
+                          fontWeight: pw.FontWeight.bold),
+                    ),
                   ))
               .toList(),
         ),
@@ -1053,18 +1082,22 @@ class _FichajesTabState extends State<FichajesTab> {
 
         final usuario = sesion.entrada?.usuario ??
             sesion.salida?.usuario ??
-            (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
+            (sesion.incidencias.isNotEmpty
+                ? sesion.incidencias.first.incidencia.usuario
+                : null);
 
         final empleado = (usuario != null) ? mapaEmpleados[usuario] : null;
 
         final entradaStr = _formatFecha(sesion.entrada?.fechaEntrada);
         final salidaStr = _formatFecha(sesion.salida?.fechaSalida);
 
-        final entradaCoords = (sesion.entrada?.latitud != null && sesion.entrada?.longitud != null)
+        final entradaCoords = (sesion.entrada?.latitud != null &&
+                sesion.entrada?.longitud != null)
             ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
             : '-';
 
-        final salidaCoords = (sesion.salida?.latitud != null && sesion.salida?.longitud != null)
+        final salidaCoords = (sesion.salida?.latitud != null &&
+                sesion.salida?.longitud != null)
             ? '${sesion.salida!.latitud}, ${sesion.salida!.longitud}'
             : '-';
 
@@ -1075,28 +1108,34 @@ class _FichajesTabState extends State<FichajesTab> {
         if (dtE != null && dtS != null) {
           minutosTrabajados = _diffMinutos(dtE, dtS);
         }
-        final tiempoTrabajadoStr = minutosTrabajados > 0 ? '${_formatMinutos(minutosTrabajados)} h' : '-';
+        final tiempoTrabajadoStr =
+            minutosTrabajados > 0 ? '${_formatMinutos(minutosTrabajados)} h' : '-';
 
-        // Horas ordinarias (lookup por DNI + día de la entrada)
+        // Horas ordinarias (por día de ENTRADA)
         String horasOrdinariasStr = '-';
         if (dtE != null) {
-          final dni = empleado?.dni ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado;
+          final dni = empleado?.dni ??
+              sesion.entrada?.dniEmpleado ??
+              sesion.salida?.dniEmpleado;
           if (dni != null && dni.isNotEmpty) {
             final mo = _ordinariasForDay(ordinariasIdx, dni, dtE);
             if (mo != null && mo > 0) horasOrdinariasStr = '${_formatMinutos(mo)} h';
           }
         }
 
-        // Incidencias -> SOLO CÓDIGO (más observaciones si hay)
+        // Incidencias -> CÓDIGO + DESCRIPCIÓN
         final incidenciasText = sesion.incidencias.isNotEmpty
             ? sesion.incidencias.map((inc) {
-                final c = inc.incidencia.incidenciaCodigo ?? '-';
-                final o = inc.incidencia.observaciones;
-                return o != null && o.isNotEmpty ? '$c ($o)' : c;
+                final codigo = inc.incidencia.incidenciaCodigo;
+                if (codigo == null || codigo.isEmpty) return 'Sin código';
+                final incidencia = mapaIncidencias[codigo];
+                final descripcion = incidencia?.descripcion ?? codigo;
+                return '$codigo - $descripcion';
               }).join(', ')
             : '-';
 
-        final rowColor = (i % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
+        final rowColor =
+            (i % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
 
         rows.add(
           pw.TableRow(
@@ -1104,19 +1143,59 @@ class _FichajesTabState extends State<FichajesTab> {
             children: [
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(empleado?.nombre ?? usuario ?? 'Desconocido'),
+                child: pw.Align(
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Text(empleado?.nombre ?? usuario ?? 'Desconocido'),
+                ),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(empleado?.dni ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado ?? '-'),
+                child: pw.Align(
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Text(empleado?.dni ??
+                      sesion.entrada?.dniEmpleado ??
+                      sesion.salida?.dniEmpleado ??
+                      '-'),
+                ),
               ),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(entradaStr)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(salidaStr)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(entradaCoords)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(salidaCoords)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(tiempoTrabajadoStr)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(horasOrdinariasStr)),
-              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(incidenciasText)),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.center, child: pw.Text(entradaStr)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.center, child: pw.Text(salidaStr)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Text(entradaCoords)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Text(salidaCoords)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.center,
+                    child: pw.Text(tiempoTrabajadoStr)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Align(
+                    alignment: pw.Alignment.center,
+                    child: pw.Text(horasOrdinariasStr)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Text(incidenciasText, maxLines: 3, softWrap: true),
+              ),
             ],
           ),
         );
@@ -1124,12 +1203,14 @@ class _FichajesTabState extends State<FichajesTab> {
       return rows;
     }
 
-    // --------- Resumen por empleado (usa lo filtrado) ---------
+    // --------- Resumen por empleado ---------
     final Map<String /*usuario*/, _Agg> agg = {};
     for (final sesion in sesiones) {
       final usuario = sesion.entrada?.usuario ??
           sesion.salida?.usuario ??
-          (sesion.incidencias.isNotEmpty ? sesion.incidencias.first.incidencia.usuario : null);
+          (sesion.incidencias.isNotEmpty
+              ? sesion.incidencias.first.incidencia.usuario
+              : null);
       if (usuario == null) continue;
 
       final a = agg.putIfAbsent(usuario, () => _Agg());
@@ -1137,16 +1218,17 @@ class _FichajesTabState extends State<FichajesTab> {
       final dtE = _parse(sesion.entrada?.fechaEntrada);
       final dtS = _parse(sesion.salida?.fechaSalida);
 
-      // trabajadas
       if (dtE != null && dtS != null) {
         a.trabajadas += _diffMinutos(dtE, dtS);
       }
 
-      // ordinarias: cuenta 1 vez por día
+      // ordinarias: 1 vez por día (clave = ENTRADA)
       if (dtE != null) {
         final dayKey = DateTime(dtE.year, dtE.month, dtE.day);
         if (!a.diasContados.contains(dayKey)) {
-          final dni = (mapaEmpleados[usuario]?.dni) ?? sesion.entrada?.dniEmpleado ?? sesion.salida?.dniEmpleado;
+          final dni = mapaEmpleados[usuario]?.dni ??
+              sesion.entrada?.dniEmpleado ??
+              sesion.salida?.dniEmpleado;
           if (dni != null && dni.isNotEmpty) {
             final mo = _ordinariasForDay(ordinariasIdx, dni, dtE);
             if (mo != null && mo > 0) a.ordinarias += mo;
@@ -1175,10 +1257,20 @@ class _FichajesTabState extends State<FichajesTab> {
       );
 
       int i = 0;
-      mapaEmpleados.forEach((usuario, emp) {
+      // Orden estable por nombre para que no baile
+      final empleadosOrdenados = mapaEmpleados.entries.toList()
+        ..sort((a, b) => (a.value.nombre ?? a.key).compareTo(
+              b.value.nombre ?? b.key,
+            ));
+
+      for (final entry in empleadosOrdenados) {
+        final usuario = entry.key;
+        final emp = entry.value;
         final a = agg[usuario];
-        if (a == null) return; // no aparece en sesiones
-        final rowColor = (i++ % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
+        if (a == null) continue;
+
+        final rowColor =
+            (i++ % 2 == 0) ? null : const pw.BoxDecoration(color: azulClaro);
         final delta = a.trabajadas - a.ordinarias;
 
         rows.add(
@@ -1193,7 +1285,7 @@ class _FichajesTabState extends State<FichajesTab> {
             ],
           ),
         );
-      });
+      }
 
       // Totales
       rows.add(
@@ -1204,7 +1296,8 @@ class _FichajesTabState extends State<FichajesTab> {
             _cellBodyBold(''),
             _cellBodyBold('${_formatMinutos(totalOrdMin)} h'),
             _cellBodyBold('${_formatMinutos(totalTrabMin)} h'),
-            _cellBodyBold('${_formatMinutos(totalTrabMin - totalOrdMin)} h'),
+            _cellBodyBold(
+                '${_formatMinutos(totalTrabMin - totalOrdMin)} h'),
           ],
         ),
       );
@@ -1216,50 +1309,58 @@ class _FichajesTabState extends State<FichajesTab> {
     pdf.addPage(
       pw.MultiPage(
         theme: theme,
-        // 👇 Usamos margin aquí, sin pageTheme
-        margin: const pw.EdgeInsets.fromLTRB(24, 28, 24, 28),
+        margin: const pw.EdgeInsets.fromLTRB(20, 22, 20, 22),
         header: (context) => pw.Container(
-          padding: const pw.EdgeInsets.symmetric(vertical: 8),
+          padding: const pw.EdgeInsets.symmetric(vertical: 6),
           child: pw.Container(
             decoration: const pw.BoxDecoration(
               color: azul,
-              borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
+              borderRadius: pw.BorderRadius.all(pw.Radius.circular(5)),
             ),
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text(
                   'Fichajes filtrados',
-                  style: pw.TextStyle(color: blanco, fontSize: 16, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                      color: blanco,
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold),
                 ),
-                pw.Text(titulo, style: const pw.TextStyle(color: blanco, fontSize: 10)),
+                pw.Text(titulo,
+                    style:
+                        const pw.TextStyle(color: blanco, fontSize: 9)),
               ],
             ),
           ),
         ),
         build: (context) => [
-          pw.SizedBox(height: 8),
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            border: pw.TableBorder.all(
+                color: PdfColors.grey300, width: 0.5),
             columnWidths: const {
-              0: pw.FlexColumnWidth(1.2), // Empleado
+              0: pw.FlexColumnWidth(1.3), // Empleado
               1: pw.FlexColumnWidth(0.9), // DNI
-              2: pw.FlexColumnWidth(1.1), // Entrada
-              3: pw.FlexColumnWidth(1.1), // Salida
-              4: pw.FlexColumnWidth(1.3), // Coords E
-              5: pw.FlexColumnWidth(1.3), // Coords S
-              6: pw.FlexColumnWidth(0.9), // Tiempo
-              7: pw.FlexColumnWidth(1.0), // Ordinarias
-              8: pw.FlexColumnWidth(1.3), // Incidencias
+              2: pw.FlexColumnWidth(1.0), // Entrada
+              3: pw.FlexColumnWidth(1.0), // Salida
+              4: pw.FlexColumnWidth(1.2), // Coords E
+              5: pw.FlexColumnWidth(1.2), // Coords S
+              6: pw.FlexColumnWidth(0.8), // Tiempo
+              7: pw.FlexColumnWidth(0.9), // Ordinarias
+              8: pw.FlexColumnWidth(1.4), // Incidencias
             },
             children: buildMainTableRows(),
           ),
-          pw.SizedBox(height: 18),
-          pw.Text('Resumen de horas', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 14),
+          pw.Text('Resumen de horas',
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 6),
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            border: pw.TableBorder.all(
+                color: PdfColors.grey300, width: 0.5),
             columnWidths: const {
               0: pw.FlexColumnWidth(1.4),
               1: pw.FlexColumnWidth(1.0),
@@ -1278,14 +1379,22 @@ class _FichajesTabState extends State<FichajesTab> {
 
   static pw.Widget _cellHeader(String text, PdfColor color) => pw.Padding(
         padding: const pw.EdgeInsets.all(6),
-        child: pw.Text(text, style: pw.TextStyle(color: color, fontWeight: pw.FontWeight.bold, fontSize: 10)),
+        child: pw.Text(text,
+            style: pw.TextStyle(
+                color: color,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9.5)),
       );
 
-  static pw.Widget _cellBody(String text) =>
-      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
+  static pw.Widget _cellBody(String text) => pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)));
 
-  static pw.Widget _cellBodyBold(String text) =>
-      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)));
+  static pw.Widget _cellBodyBold(String text) => pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(text,
+          style:
+              pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)));
 
   // ------------------ Guardado ------------------
   Future<String> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
@@ -1305,8 +1414,14 @@ class _FichajesTabState extends State<FichajesTab> {
     List<HorarioEmpleado> horarios,
   ) async {
     try {
+      // Usar datos locales para asegurar que las incidencias tengan toda la información
+      final provider = context.read<AdminProvider>();
+      final fichajesLocales = await provider.obtenerFichajesLocales();
+      final registrosFiltrados = _filtrarRegistros(fichajesLocales);
+      final sesionesLocales = _agruparSesionesPorUsuario(registrosFiltrados);
+
       final pdf = await _crearPdf(
-        sesiones: sesiones,
+        sesiones: sesionesLocales,
         mapaEmpleados: mapaEmpleados,
         mapaIncidencias: mapaIncidencias,
         horarios: horarios,
@@ -1315,19 +1430,17 @@ class _FichajesTabState extends State<FichajesTab> {
       final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('PDF guardado en: $rutaGuardado')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('PDF guardado en: $rutaGuardado')));
       }
 
-      // Si usas open_filex:
-      // ❌ OpenFilex.open(rutaGuardado);
-      final resultado = await OpenFile.open(rutaGuardado);  // ✅
+      final resultado = await OpenFile.open(rutaGuardado);
       if (resultado.type != ResultType.done && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir el PDF automáticamente.')),
+          const SnackBar(
+              content: Text('No se pudo abrir el PDF automáticamente.')),
         );
       }
-
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1337,30 +1450,37 @@ class _FichajesTabState extends State<FichajesTab> {
     }
   }
 
-  // ------------------ Build ------------------
+  // ------------------ Build (UI: SOLO ESTÉTICA MEJORADA) ------------------
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminProvider>(
       builder: (context, provider, _) {
         if (provider.historicos.isEmpty) {
           return const Center(
-            child: Text('No hay fichajes.', style: TextStyle(fontSize: 18, color: Colors.grey)),
+            child: Text('No hay fichajes.',
+                style: TextStyle(fontSize: 18, color: Colors.grey)),
           );
         }
 
         final registrosFiltrados = _filtrarRegistros(provider.historicos);
         final sesiones = _agruparSesionesPorUsuario(registrosFiltrados);
 
-        final Map<String, Empleado> mapaEmpleados = {for (var e in provider.empleados) e.usuario: e};
-        final Map<String, Incidencia> mapaIncidencias = {for (var i in provider.incidencias) i.codigo: i};
+        final Map<String, Empleado> mapaEmpleados = {
+          for (var e in provider.empleados) e.usuario: e
+        };
+        final Map<String, Incidencia> mapaIncidencias = {
+          for (var i in provider.incidencias) i.codigo: i
+        };
 
-        // ⚠️ Asegúrate de que aquí accedes a tu lista real de horarios
-        final List<HorarioEmpleado> horarios = provider.horarios; // cambia si tu propiedad tiene otro nombre
+        // ⚠️ lista real de horarios
+        final List<HorarioEmpleado> horarios = provider.horarios;
+        final ordinariasIdx = _buildOrdinariasIndex(horarios);
 
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1379,12 +1499,14 @@ class _FichajesTabState extends State<FichajesTab> {
                         child: DropdownButton<int>(
                           value: _selectedMonth,
                           items: _buildMonths(),
-                          onChanged: (v) => setState(() => _selectedMonth = v!),
+                          onChanged: (v) =>
+                              setState(() => _selectedMonth = v!),
                         ),
                       ),
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 8),
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade400),
                             borderRadius: BorderRadius.circular(6),
@@ -1394,7 +1516,8 @@ class _FichajesTabState extends State<FichajesTab> {
                             underline: const SizedBox(),
                             value: _selectedUsuario,
                             items: _buildUsuarios(provider.empleados),
-                            onChanged: (v) => setState(() => _selectedUsuario = v),
+                            onChanged: (v) =>
+                                setState(() => _selectedUsuario = v),
                           ),
                         ),
                       ),
@@ -1407,12 +1530,14 @@ class _FichajesTabState extends State<FichajesTab> {
                       ElevatedButton.icon(
                         icon: const Icon(Icons.picture_as_pdf),
                         label: const Text('Exportar PDF'),
-                        onPressed: () =>
-                            _exportarPdfDescargar(sesiones, mapaEmpleados, mapaIncidencias, horarios),
+                        onPressed: () => _exportarPdfDescargar(
+                            sesiones, mapaEmpleados, mapaIncidencias, horarios),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF2196F3),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ],
@@ -1422,146 +1547,83 @@ class _FichajesTabState extends State<FichajesTab> {
             ),
             Expanded(
               child: sesiones.isEmpty
-                  ? const Center(child: Text('No hay fichajes para el filtro seleccionado.'))
+                  ? const Center(
+                      child: Text(
+                          'No hay fichajes para el filtro seleccionado.'))
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: sesiones.length,
                       itemBuilder: (context, index) {
-                        final sesion = sesiones[index];
-                        final esSoloIncidencia = sesion.entrada == null && sesion.salida == null;
+                        final s = sesiones[index];
 
-                        Empleado? empleado;
-                        String? usuarioIncidencia;
+                        final usuario = s.entrada?.usuario ??
+                            s.salida?.usuario ??
+                            (s.incidencias.isNotEmpty
+                                ? s.incidencias.first.incidencia.usuario
+                                : null);
+                        final emp =
+                            (usuario != null) ? mapaEmpleados[usuario] : null;
 
-                        if (esSoloIncidencia && sesion.incidencias.isNotEmpty) {
-                          usuarioIncidencia = sesion.incidencias.first.incidencia.usuario;
-                          empleado = usuarioIncidencia != null ? mapaEmpleados[usuarioIncidencia] : null;
-                        } else {
-                          final usuarioSesion = sesion.entrada?.usuario ?? sesion.salida?.usuario;
-                          empleado = usuarioSesion != null ? mapaEmpleados[usuarioSesion] : null;
+                        final dtE = _parse(s.entrada?.fechaEntrada);
+                        final dtS = _parse(s.salida?.fechaSalida);
+                        final entradaStr =
+                            _formatFecha(s.entrada?.fechaEntrada);
+                        final salidaStr =
+                            _formatFecha(s.salida?.fechaSalida);
+
+                        final eLat = s.entrada?.latitud,
+                            eLon = s.entrada?.longitud;
+                        final entradaCoords =
+                            (eLat != null && eLon != null) ? '$eLat, $eLon' : '-';
+
+                        final sLat = s.salida?.latitud,
+                            sLon = s.salida?.longitud;
+                        final salidaCoords =
+                            (sLat != null && sLon != null) ? '$sLat, $sLon' : '-';
+
+                        int minTrab = 0;
+                        if (dtE != null && dtS != null) {
+                          minTrab = _diffMinutos(dtE, dtS);
                         }
+                        final tiempoStr =
+                            (minTrab > 0) ? _formatMinutos(minTrab) : '-';
 
-                        if (esSoloIncidencia) {
-                          // Tarjeta de solo incidencia
-                          return Card(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 3,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    empleado != null
-                                        ? '${empleado.nombre ?? usuarioIncidencia ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
-                                        : usuarioIncidencia ?? 'Usuario desconocido',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...sesion.incidencias.map((inc) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              // SOLO código + observaciones
-                                              'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                              '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                              ' — ${inc.contexto}',
-                                              style: const TextStyle(color: Colors.orange),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          );
-                        } else {
-                          final entradaStr = _formatFecha(sesion.entrada?.fechaEntrada);
-                          final salidaStr = _formatFecha(sesion.salida?.fechaSalida);
+                        final dni =
+                            emp?.dni ?? s.entrada?.dniEmpleado ?? s.salida?.dniEmpleado ?? '-';
 
-                          String entradaCoords = '-';
-                          String salidaCoords = '-';
-
-                          final latE = sesion.entrada?.latitud;
-                          final lonE = sesion.entrada?.longitud;
-                          if (latE != null && lonE != null) entradaCoords = '$latE, $lonE';
-
-                          final latS = sesion.salida?.latitud;
-                          final lonS = sesion.salida?.longitud;
-                          if (latS != null && lonS != null) salidaCoords = '$latS, $lonS';
-
-                          // Tiempo trabajado (UI)
-                          String tiempoTrabajado = '';
-                          final dtE = _parse(sesion.entrada?.fechaEntrada);
-                          final dtS = _parse(sesion.salida?.fechaSalida);
-                          if (dtE != null && dtS != null) {
-                            final minutos = _diffMinutos(dtE, dtS);
-                            if (minutos > 0) tiempoTrabajado = '${_formatMinutos(minutos)} h';
+                        String ordStr = '-';
+                        if (dni != '-' && dtE != null) {
+                          final mo = _ordinariasForDay(ordinariasIdx, dni, dtE);
+                          if (mo != null && mo > 0) {
+                            ordStr = _formatMinutos(mo);
                           }
-
-                          return Card(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 3,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    empleado != null
-                                        ? '${empleado.nombre ?? sesion.entrada?.usuario ?? "Usuario desconocido"} (DNI: ${empleado.dni ?? "N/A"})'
-                                        : sesion.entrada?.usuario ?? sesion.salida?.usuario ?? 'Usuario desconocido',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text('Entrada: $entradaStr'),
-                                  Text('Salida: $salidaStr'),
-                                  Text('Coordenadas entrada: $entradaCoords'),
-                                  Text('Coordenadas salida: $salidaCoords'),
-                                  if (sesion.incidencias.isNotEmpty)
-                                    ...sesion.incidencias.map((inc) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 6),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                // SOLO código + observaciones
-                                                'Incidencia: ${inc.incidencia.incidenciaCodigo ?? '-'}'
-                                                '${inc.incidencia.observaciones != null ? ' (${inc.incidencia.observaciones})' : ''}'
-                                                ' — ${inc.contexto}',
-                                                style: const TextStyle(color: Colors.orange),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }),
-                                  if (tiempoTrabajado.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Text(
-                                        'Tiempo trabajado: $tiempoTrabajado',
-                                        style: const TextStyle(color: Color(0xFF2196F3)),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
                         }
+
+                        final incidenciasText = s.incidencias.isNotEmpty
+                            ? s.incidencias.map((inc) {
+                                final codigo =
+                                    inc.incidencia.incidenciaCodigo;
+                                if (codigo == null || codigo.isEmpty) {
+                                  return 'Sin código';
+                                }
+                                final incDef = mapaIncidencias[codigo];
+                                final descripcion =
+                                    incDef?.descripcion ?? codigo;
+                                return '$codigo - $descripcion';
+                              }).join(', ')
+                            : '-';
+
+                        return _SessionCompactCard(
+                          empleado: emp?.nombre ?? usuario ?? 'Desconocido',
+                          dni: dni,
+                          entrada: entradaStr,
+                          salida: salidaStr,
+                          coordsEntrada: entradaCoords,
+                          coordsSalida: salidaCoords,
+                          tiempo: tiempoStr,
+                          ordinarias: ordStr,
+                          incidencias: incidenciasText,
+                        );
                       },
                     ),
             ),
@@ -1574,7 +1636,266 @@ class _FichajesTabState extends State<FichajesTab> {
 
 
 
-// Modelos auxiliares
+// ====== UI: Tarjeta compacta y moderna por sesión (SOLO FICHAJES) ======
+class _SessionCompactCard extends StatelessWidget {
+  final String empleado;
+  final String dni;
+  final String entrada;
+  final String salida;
+  final String coordsEntrada;
+  final String coordsSalida;
+  final String tiempo;
+  final String ordinarias;
+  final String incidencias;
+
+  const _SessionCompactCard({
+    Key? key,
+    required this.empleado,
+    required this.dni,
+    required this.entrada,
+    required this.salida,
+    required this.coordsEntrada,
+    required this.coordsSalida,
+    required this.tiempo,
+    required this.ordinarias,
+    required this.incidencias,
+  }) : super(key: key);
+
+  // Pill genérica con soporte de colores personalizados (bg/fg)
+  Widget _pill(
+    BuildContext context,
+    String text, {
+    IconData? icon,
+    Color? bg,
+    Color? fg,
+  }) {
+    final themePrimary = Theme.of(context).colorScheme.primary;
+    final background = bg ?? themePrimary.withOpacity(.08);
+    final foreground = fg ?? themePrimary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: foreground.withOpacity(.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: fg ?? foreground),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              color: fg ?? foreground,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kv(String label, String value, {IconData? icon}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon ?? Icons.info_outline, size: 16, color: Colors.grey.shade600),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade900,
+                    fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _section(String title, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .2,
+              )),
+          const SizedBox(height: 8),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final divider =
+        VerticalDivider(color: Colors.grey.shade300, thickness: 1, width: 16);
+
+    // Azul corporativo (ajusta si quieres otro tono)
+    const azul = Color(0xFF1565C0);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Encabezado: Empleado + DNI badge (azul sólido)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    empleado,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _pill(
+                  context,
+                  dni,
+                  icon: Icons.badge_outlined,
+                  bg: Colors.blue,
+                  fg: Colors.white,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Dos columnas: Entrada | Salida (responsivo)
+            LayoutBuilder(
+              builder: (context, c) {
+                final isWide = c.maxWidth > 560;
+                final entradaSection = _section('Entrada', [
+                  _kv('Fecha y hora', entrada, icon: Icons.login),
+                  const SizedBox(height: 8),
+                  _kv('Coordenadas', coordsEntrada, icon: Icons.my_location),
+                ]);
+                final salidaSection = _section('Salida', [
+                  _kv('Fecha y hora', salida, icon: Icons.logout),
+                  const SizedBox(height: 8),
+                  _kv('Coordenadas', coordsSalida, icon: Icons.place_outlined),
+                ]);
+
+                if (isWide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: entradaSection),
+                      divider,
+                      Expanded(child: salidaSection),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    entradaSection,
+                    const SizedBox(height: 10),
+                    salidaSection,
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            // Pills: Tiempo + Ordinarias (azul sólido)
+            Row(
+              children: [
+                _pill(
+                  context,
+                  'Tiempo: $tiempo',
+                  icon: Icons.timer_outlined,
+                  bg: Colors.blue,
+                  fg: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                _pill(
+                  context,
+                  'Ordinarias: $ordinarias',
+                  icon: Icons.schedule_outlined,
+                  bg: Colors.blue,
+                  fg: Colors.white,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Incidencias
+            if (incidencias != '-' && incidencias.trim().isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        color: Colors.orange, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        incidencias,
+                        style: TextStyle(
+                          color: Colors.orange.shade900,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+// ====== Modelos auxiliares ======
 class SesionTrabajo {
   final Historico? entrada;
   final Historico? salida;
@@ -1814,7 +2135,6 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
 }
 
 // HorariosTab.dart
-
 class HorariosTab extends StatefulWidget {
   const HorariosTab({Key? key}) : super(key: key);
 
@@ -1866,8 +2186,9 @@ class _HorariosTabState extends State<HorariosTab> {
     return e - s;
   }
 
-  void _abrirDialogoFormulario({HorarioEmpleado? horario}) {
+  Future<void> _abrirDialogoFormulario({HorarioEmpleado? horario}) async {
     final provider = Provider.of<AdminProvider>(context, listen: false);
+
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
@@ -1881,30 +2202,65 @@ class _HorariosTabState extends State<HorariosTab> {
             cifEmpresa: provider.cifEmpresa,
             empleados: provider.empleados,
             horarioExistente: horario,
+
+            // ---- Guardado SINGLE con loader pequeño ----
             onSubmit: (nuevoHorario) async {
+              // loader pequeño mientras se guarda un único horario
+              final closeSpinner = _showSmallSpinner();
               String? error;
               if (horario == null) {
                 error = await provider.addHorarioEmpleado(nuevoHorario);
               } else {
                 error = await provider.updateHorarioEmpleado(nuevoHorario);
               }
-              if (context.mounted) Navigator.pop(context);
+              closeSpinner();
+              if (context.mounted) Navigator.pop(context); // cerrar formulario
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
                 );
               }
             },
+
+            // ---- Creación MÚLTIPLE con diálogo de progreso ----
             onSubmitMultiple: (nuevosHorarios) async {
+              final total = nuevosHorarios.length;
+              final progreso = ValueNotifier<int>(0);
+
+              // Diálogo modal no cancelable con barra de progreso
+              _showProgressDialog(
+                context: context,
+                title: 'Creando horarios',
+                subtitle: 'Esto puede tardar unos segundos…',
+                total: total,
+                progreso: progreso,
+              );
+
               String? error;
-              for (final h in nuevosHorarios) {
-                error = await provider.addHorarioEmpleado(h);
-                if (error != null) break;
+              try {
+                for (int i = 0; i < total; i++) {
+                  final h = nuevosHorarios[i];
+                  error = await provider.addHorarioEmpleado(h);
+                  if (error != null) break;
+                  progreso.value = i + 1; // avanzar progreso
+                }
+              } finally {
+                if (Navigator.of(context, rootNavigator: true).canPop()) {
+                  Navigator.of(context, rootNavigator: true).pop(); // cerrar diálogo progreso
+                }
               }
-              if (context.mounted) Navigator.pop(context);
+
+              if (context.mounted) Navigator.pop(context); // cerrar formulario
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                );
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Horarios creados correctamente'),
+                    backgroundColor: Colors.green,
+                  ),
                 );
               }
             },
@@ -1912,6 +2268,39 @@ class _HorariosTabState extends State<HorariosTab> {
         ),
       ),
     );
+  }
+
+  // Loader compacto (Circular) para operaciones rápidas
+  VoidCallback _showSmallSpinner() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => WillPopScope(
+        onWillPop: () async => false,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(16),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3)),
+                SizedBox(width: 12),
+                Text('Guardando…', style: TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return () {
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    };
   }
 
   @override
@@ -2033,8 +2422,7 @@ class _HorariosTabState extends State<HorariosTab> {
                                   ),
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () =>
-                                      _abrirDialogoFormulario(horario: h),
+                                  onPressed: () => _abrirDialogoFormulario(horario: h),
                                   tooltip: 'Editar',
                                 ),
                                 IconButton(
@@ -2051,25 +2439,22 @@ class _HorariosTabState extends State<HorariosTab> {
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
+                                            onPressed: () => Navigator.pop(ctx, false),
                                             child: const Text('Cancelar'),
                                           ),
                                           ElevatedButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
+                                            onPressed: () => Navigator.pop(ctx, true),
                                             child: const Text('Eliminar'),
                                           ),
                                         ],
                                       ),
                                     );
                                     if (confirm == true) {
-                                      final error =
-                                          await provider.deleteHorarioEmpleado(
-                                              h.id!, h.dniEmpleado);
+                                      final error = await provider.deleteHorarioEmpleado(
+                                        h.id!, h.dniEmpleado,
+                                      );
                                       if (error != null && context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
+                                        ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
                                             content: Text(error),
                                             backgroundColor: Colors.redAccent,
@@ -2107,6 +2492,67 @@ class _HorariosTabState extends State<HorariosTab> {
   }
 }
 
+/// Muestra un diálogo de progreso lineal bloqueante.
+/// Cerrar manualmente con un `Navigator.pop(rootNavigator: true)`
+/// cuando finalice la operación.
+void _showProgressDialog({
+  required BuildContext context,
+  required String title,
+  String? subtitle,
+  required int total,
+  required ValueNotifier<int> progreso,
+}) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => WillPopScope(
+      onWillPop: () async => false,
+      child: Center(
+        child: Container(
+          width: 380,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 16)],
+          ),
+          child: ValueListenableBuilder<int>(
+            valueListenable: progreso,
+            builder: (ctx, current, __) {
+              final value = total == 0 ? null : (current / total).clamp(0.0, 1.0);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_upload, size: 22),
+                      const SizedBox(width: 8),
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 6),
+                    Text(subtitle, style: TextStyle(color: Colors.grey[700])),
+                  ],
+                  const SizedBox(height: 14),
+                  LinearProgressIndicator(value: value == 0 ? 1e-9 : value),
+                  const SizedBox(height: 10),
+                  Text(total == 0
+                      ? 'Preparando…'
+                      : 'Progreso: $current / $total'),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _FormularioHorario extends StatefulWidget {
   final String cifEmpresa;
   final List<Empleado> empleados;
@@ -2134,9 +2580,9 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
   List<int> _diasSeleccionados = [];
   TimeOfDay? _horaInicio;
   TimeOfDay? _horaFin;
-  TextEditingController _nombreTurnoCtrl = TextEditingController();
-  TextEditingController _margenCtrl = TextEditingController();
-  TextEditingController _margenDespuesCtrl = TextEditingController();
+  final TextEditingController _nombreTurnoCtrl = TextEditingController();
+  final TextEditingController _margenCtrl = TextEditingController();
+  final TextEditingController _margenDespuesCtrl = TextEditingController();
 
   final List<String> _diasSemana = const [
     'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
@@ -2159,6 +2605,14 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
       _margenCtrl.text = "10";
       _margenDespuesCtrl.text = "30";
     }
+  }
+
+  @override
+  void dispose() {
+    _nombreTurnoCtrl.dispose();
+    _margenCtrl.dispose();
+    _margenDespuesCtrl.dispose();
+    super.dispose();
   }
 
   TimeOfDay _parseTime(String timeStr) {
@@ -2267,8 +2721,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
 
   @override
   Widget build(BuildContext context) {
-    final empleadosList =
-        widget.empleados.where((e) => e.dni != null).toList();
+    final empleadosList = widget.empleados.where((e) => e.dni != null).toList();
 
     return SafeArea(
       child: Material(
@@ -2280,12 +2733,8 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 32,
-                  offset: const Offset(0, 12),
-                ),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 32, offset: Offset(0, 12)),
               ],
             ),
             child: Padding(
@@ -2300,8 +2749,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.schedule,
-                                  size: 40, color: Colors.blue.shade600),
+                              Icon(Icons.schedule, size: 40, color: Colors.blue.shade600),
                               const SizedBox(width: 12),
                               Text(
                                 isEditing ? 'Editar horario' : 'Nuevo horario',
@@ -2332,17 +2780,12 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                             spacing: 10,
                             runSpacing: 8,
                             children: empleadosList.map((emp) {
-                              final checked =
-                                  _empleadosSeleccionados.contains(emp.dni!);
+                              final checked = _empleadosSeleccionados.contains(emp.dni!);
                               return FilterChip(
                                 label: Text(emp.nombre ?? emp.usuario),
                                 labelStyle: TextStyle(
-                                  color: checked
-                                      ? Colors.white
-                                      : Colors.blue.shade800,
-                                  fontWeight: checked
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
+                                  color: checked ? Colors.white : Colors.blue.shade800,
+                                  fontWeight: checked ? FontWeight.bold : FontWeight.normal,
                                 ),
                                 selected: checked,
                                 onSelected: isEditing
@@ -2351,14 +2794,11 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                         setState(() {
                                           if (emp.dni == null) return;
                                           if (val) {
-                                            if (!_empleadosSeleccionados
-                                                .contains(emp.dni!)) {
-                                              _empleadosSeleccionados
-                                                  .add(emp.dni!);
+                                            if (!_empleadosSeleccionados.contains(emp.dni!)) {
+                                              _empleadosSeleccionados.add(emp.dni!);
                                             }
                                           } else {
-                                            _empleadosSeleccionados
-                                                .remove(emp.dni!);
+                                            _empleadosSeleccionados.remove(emp.dni!);
                                           }
                                         });
                                       },
@@ -2389,15 +2829,12 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                           Wrap(
                             spacing: 10,
                             runSpacing: 8,
-                            children:
-                                List.generate(_diasSemana.length, (i) {
+                            children: List.generate(_diasSemana.length, (i) {
                               final checked = _diasSeleccionados.contains(i);
                               return FilterChip(
                                 label: Text(_diasSemana[i]),
                                 labelStyle: TextStyle(
-                                  color: checked
-                                      ? Colors.white
-                                      : Colors.blue.shade800,
+                                  color: checked ? Colors.white : Colors.blue.shade800,
                                 ),
                                 selected: checked,
                                 onSelected: isEditing
@@ -2405,8 +2842,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                     : (val) {
                                         setState(() {
                                           if (val) {
-                                            if (!_diasSeleccionados
-                                                .contains(i)) {
+                                            if (!_diasSeleccionados.contains(i)) {
                                               _diasSeleccionados.add(i);
                                             }
                                           } else {
@@ -2428,8 +2864,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                             children: [
                               Expanded(
                                 child: InkWell(
-                                  onTap: () =>
-                                      _pickHoraPersonalizada(isInicio: true),
+                                  onTap: () => _pickHoraPersonalizada(isInicio: true),
                                   borderRadius: BorderRadius.circular(14),
                                   child: InputDecorator(
                                     decoration: InputDecoration(
@@ -2437,17 +2872,14 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                       filled: true,
                                       fillColor: Colors.blue.shade50,
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(14),
                                         borderSide: BorderSide.none,
                                       ),
-                                      suffixIcon: Icon(Icons.access_time,
-                                          color: Colors.blue.shade400),
+                                      suffixIcon:
+                                          Icon(Icons.access_time, color: Colors.blue.shade400),
                                     ),
                                     child: Text(
-                                      _horaInicio != null
-                                          ? _formatTime(_horaInicio)
-                                          : 'Selecciona',
+                                      _horaInicio != null ? _formatTime(_horaInicio) : 'Selecciona',
                                       style: TextStyle(
                                         color: Colors.blue.shade900,
                                         fontWeight: FontWeight.w600,
@@ -2459,8 +2891,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                               const SizedBox(width: 14),
                               Expanded(
                                 child: InkWell(
-                                  onTap: () =>
-                                      _pickHoraPersonalizada(isInicio: false),
+                                  onTap: () => _pickHoraPersonalizada(isInicio: false),
                                   borderRadius: BorderRadius.circular(14),
                                   child: InputDecorator(
                                     decoration: InputDecoration(
@@ -2468,17 +2899,14 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                       filled: true,
                                       fillColor: Colors.blue.shade50,
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(14),
                                         borderSide: BorderSide.none,
                                       ),
-                                      suffixIcon: Icon(Icons.access_time,
-                                          color: Colors.blue.shade400),
+                                      suffixIcon:
+                                          Icon(Icons.access_time, color: Colors.blue.shade400),
                                     ),
                                     child: Text(
-                                      _horaFin != null
-                                          ? _formatTime(_horaFin)
-                                          : 'Selecciona',
+                                      _horaFin != null ? _formatTime(_horaFin) : 'Selecciona',
                                       style: TextStyle(
                                         color: Colors.blue.shade900,
                                         fontWeight: FontWeight.w600,
@@ -2522,21 +2950,16 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                 borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide.none,
                               ),
-                              helperText:
-                                  'Minutos antes permitidos para fichar (p. ej. 10)',
+                              helperText: 'Minutos antes permitidos para fichar (p. ej. 10)',
                             ),
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontWeight: FontWeight.w500,
                             ),
                             validator: (val) {
-                              if (val == null || val.isEmpty) {
-                                return "Obligatorio";
-                              }
+                              if (val == null || val.isEmpty) return "Obligatorio";
                               final n = int.tryParse(val);
-                              if (n == null || n < 0) {
-                                return "Debe ser número positivo";
-                              }
+                              if (n == null || n < 0) return "Debe ser número positivo";
                               return null;
                             },
                           ),
@@ -2553,21 +2976,16 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                                 borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide.none,
                               ),
-                              helperText:
-                                  'Minutos después permitidos para fichar (p. ej. 30)',
+                              helperText: 'Minutos después permitidos para fichar (p. ej. 30)',
                             ),
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontWeight: FontWeight.w500,
                             ),
                             validator: (val) {
-                              if (val == null || val.isEmpty) {
-                                return "Obligatorio";
-                              }
+                              if (val == null || val.isEmpty) return "Obligatorio";
                               final n = int.tryParse(val);
-                              if (n == null || n < 0) {
-                                return "Debe ser número positivo";
-                              }
+                              if (n == null || n < 0) return "Debe ser número positivo";
                               return null;
                             },
                           ),
@@ -2578,22 +2996,17 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              icon: Icon(isEditing ? Icons.save : Icons.add,
-                                  size: 20),
+                              icon: Icon(isEditing ? Icons.save : Icons.add, size: 20),
                               label: Text(
-                                isEditing
-                                    ? 'Guardar cambios'
-                                    : 'Crear horarios',
+                                isEditing ? 'Guardar cambios' : 'Crear horarios',
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 17),
+                                    fontWeight: FontWeight.bold, fontSize: 17),
                               ),
                               onPressed: _isFormValid() ? _guardar : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue.shade700,
                                 foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
@@ -2610,8 +3023,7 @@ class _FormularioHorarioState extends State<_FormularioHorario> {
                     right: 0,
                     top: 0,
                     child: IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          color: Colors.grey, size: 28),
+                      icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 28),
                       onPressed: () => Navigator.of(context).pop(),
                       tooltip: 'Cerrar',
                     ),
@@ -2654,8 +3066,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
     _selectedHour = widget.initialHour;
     _selectedMinute = widget.initialMinute;
     _hourController = FixedExtentScrollController(initialItem: _selectedHour);
-    _minuteController =
-        FixedExtentScrollController(initialItem: _selectedMinute);
+    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute);
   }
 
   @override
@@ -2672,8 +3083,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
     const TextStyle textStyle = TextStyle(fontSize: 32);
 
     return Container(
-      padding:
-          const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
+      padding: const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2762,9 +3172,9 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(
-                      context,
-                      TimeOfDay(
-                          hour: _selectedHour, minute: _selectedMinute));
+                    context,
+                    TimeOfDay(hour: _selectedHour, minute: _selectedMinute),
+                  );
                 },
                 child: const Text('OK'),
               ),

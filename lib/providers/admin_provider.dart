@@ -52,6 +52,9 @@ class AdminProvider extends ChangeNotifier {
 
     // 4) Incidencias
     await cargarIncidencias();
+    
+    // 5) HORARIOS (NUEVO - necesario para el PDF)
+    await cargarHorariosEmpresa(cifEmpresa);
   }
 
   // ==================== EMPRESAS (solo max_usuarios_activos) ====================
@@ -323,6 +326,19 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Obtiene los fichajes directamente desde la base de datos local
+  /// para asegurar que se incluyan todos los campos, especialmente incidencia_codigo
+  Future<List<Historico>> obtenerFichajesLocales() async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query(
+      'historico', 
+      where: 'cif_empresa = ?', 
+      whereArgs: [cifEmpresa],
+      orderBy: 'fecha_entrada DESC'
+    );
+    return maps.map((m) => Historico.fromMap(m)).toList();
+  }
+
   Future<void> sincronizarHistoricoCompleto() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token') ?? '';
@@ -442,6 +458,7 @@ class AdminProvider extends ChangeNotifier {
     final token = prefs.getString('token') ?? '';
     final baseUrl = prefs.getString('baseUrl') ?? '';
     try {
+      print('[AdminProvider] Descargando horarios para empresa: $cifEmpresa');
       await HorariosService.descargarYGuardarHorariosEmpresa(
         cifEmpresa: cifEmpresa,
         token: token,
@@ -450,6 +467,11 @@ class AdminProvider extends ChangeNotifier {
       horarios = await HorariosService.obtenerHorariosLocalPorEmpresa(
         cifEmpresa: cifEmpresa,
       );
+      print('[AdminProvider] Horarios cargados: ${horarios.length}');
+      for (int i = 0; i < horarios.length; i++) {
+        final h = horarios[i];
+        print('[AdminProvider] Horario $i: DNI=${h.dniEmpleado}, Dia=${h.diaSemana}, Horas=${h.horasOrdinarias}, Min=${h.horasOrdinariasMin}');
+      }
       notifyListeners();
     } catch (e) {
       // ignore: avoid_print

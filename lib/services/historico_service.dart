@@ -17,6 +17,8 @@ class HistoricoService {
 
   static Future<int> guardarFichajeLocal(Historico historico) async {
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Intentando guardar: ${historico.toMap()}');
+    print('[DEBUG][HistoricoService.guardarFichajeLocal] incidenciaCodigo específico: ${historico.incidenciaCodigo}');
+    print('[DEBUG][HistoricoService.guardarFichajeLocal] tipo: ${historico.tipo}');
     final id = await DatabaseHelper.instance.insertHistorico(historico);
     print('[DEBUG][HistoricoService.guardarFichajeLocal] Guardado local solicitado con id $id.');
     return id;
@@ -164,11 +166,27 @@ class HistoricoService {
 
     final db = await DatabaseHelper.instance.database;
 
-    // Sube primero los pendientes antes de borrar (muy recomendable)
+    // SOLUCIÓN MEJORADA: Sube primero los pendientes locales
+    print('[SYNC] Subiendo fichajes pendientes locales...');
     await sincronizarPendientes(token, baseUrl, nombreBD);
 
-    // Borra solo los fichajes sincronizados para NO perder los locales aún no subidos
-    await db.delete('historico', where: 'sincronizado = 1 AND cif_empresa = ?', whereArgs: [nombreBD]);
+    // NUEVA LÓGICA: NO borrar registros locales con incidencia_codigo
+    // Solo borrar registros del servidor que estén sincronizados y no tengan incidencia_codigo
+    print('[SYNC] Limpiando registros del servidor (preservando incidencias locales)...');
+    final registrosABorrar = await db.query(
+      'historico',
+      where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = "")',
+      whereArgs: [nombreBD],
+    );
+    print('[SYNC] Registros a borrar (sin incidencia_codigo): ${registrosABorrar.length}');
+    
+    if (registrosABorrar.isNotEmpty) {
+      await db.delete(
+        'historico', 
+        where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = "")', 
+        whereArgs: [nombreBD]
+      );
+    }
 
     for (var row in csvTable) {
       if (row.length < 13) {
@@ -198,12 +216,48 @@ class HistoricoService {
         'sincronizado': 1,
       };
 
-      print('[DEBUG] Insertando fila: $data');
-      await db.insert(
+      // NUEVA LÓGICA MEJORADA: Preservar registros locales con incidencia_codigo
+      final existing = await db.query(
         'historico',
-        data,
-        conflictAlgorithm: ConflictAlgorithm.replace, // ¡¡IMPORTANTE para NO duplicar!!
+        where: 'uuid = ? AND cif_empresa = ?',
+        whereArgs: [data['uuid'], nombreBD],
+        limit: 1,
       );
+      
+      if (existing.isEmpty) {
+        // Insertar nuevo registro
+        print('[SYNC] Insertando nueva fila del servidor: $data');
+        await db.insert('historico', data);
+      } else {
+        final existingRecord = existing.first;
+        final existingIncidenciaCodigo = existingRecord['incidencia_codigo'];
+        final serverIncidenciaCodigo = data['incidencia_codigo'];
+        
+        // LÓGICA PRIORITARIA: Los datos locales con incidencia_codigo tienen prioridad
+        if (existingIncidenciaCodigo != null && existingIncidenciaCodigo.toString().isNotEmpty) {
+          // El registro local tiene incidencia_codigo, NO sobrescribir
+          print('[SYNC] 🔒 PRESERVANDO registro local con incidencia_codigo: "$existingIncidenciaCodigo"');
+          print('[SYNC]    Servidor tiene: "$serverIncidenciaCodigo" (ignorado)');
+        } else if (serverIncidenciaCodigo != null && serverIncidenciaCodigo.toString().isNotEmpty) {
+          // El servidor tiene incidencia_codigo válido, actualizar
+          print('[SYNC] ✅ Actualizando con datos del servidor (incidencia_codigo: $serverIncidenciaCodigo)');
+          await db.update(
+            'historico',
+            data,
+            where: 'uuid = ? AND cif_empresa = ?',
+            whereArgs: [data['uuid'], nombreBD],
+          );
+        } else {
+          // Ambos están vacíos, actualizar normalmente
+          print('[SYNC] 🔄 Actualizando registro sin incidencia_codigo');
+          await db.update(
+            'historico',
+            data,
+            where: 'uuid = ? AND cif_empresa = ?',
+            whereArgs: [data['uuid'], nombreBD],
+          );
+        }
+      }
     }
 
     final count = firstIntValue(

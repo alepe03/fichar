@@ -241,6 +241,13 @@ class _FicharScreenState extends State<FicharScreen> {
     String? observaciones,
     bool esIncidencia = false,
   }) async {
+    // Debug: verificar los parámetros recibidos
+    print('🔍 DEBUG _registrarFichaje:');
+    print('   tipo: $tipo');
+    print('   incidenciaCodigo: $incidenciaCodigo');
+    print('   observaciones: $observaciones');
+    print('   esIncidencia: $esIncidencia');
+    
     final fechaActual = nowToMySQL();
     final ahora = DateTime.now();
 
@@ -285,6 +292,13 @@ class _FicharScreenState extends State<FicharScreen> {
       latitud: pos?.latitude,
       longitud: pos?.longitude,
     );
+    
+    // Debug: verificar el objeto Historico creado
+    print('🔍 DEBUG Historico creado:');
+    print('   incidenciaCodigo: ${historico.incidenciaCodigo}');
+    print('   tipo: ${historico.tipo}');
+    print('   observaciones: ${historico.observaciones}');
+    print('   uuid: ${historico.uuid}');
 
     await HistoricoService.guardarFichajeLocal(historico);
 
@@ -469,6 +483,13 @@ class _FicharScreenState extends State<FicharScreen> {
                                 ? () async {
                                     setStateDialog(() => _procesandoIncidencia = true);
                                     try {
+                                      // Debug: verificar qué se está pasando
+                                      print('🔍 DEBUG Registrar IncidenciaSolo:');
+                                      print('   seleccionada: $seleccionada');
+                                      print('   seleccionada!.codigo: ${seleccionada!.codigo}');
+                                      print('   seleccionada!.descripcion: ${seleccionada!.descripcion}');
+                                      print('   observaciones: ${txtObservaciones.text.trim()}');
+                                      
                                       await _registrarFichaje(
                                         'IncidenciaSolo',
                                         incidenciaCodigo: seleccionada!.codigo,

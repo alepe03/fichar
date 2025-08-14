@@ -198,7 +198,10 @@ class DatabaseHelper {
   // ==================== HISTORICO ======================
   Future<int> insertHistorico(Historico h) async {
     final db = await database;
-    return db.insert('historico', h.toDbMap());
+    final data = h.toDbMap();
+    print('[DEBUG][DatabaseHelper.insertHistorico] Datos a insertar: $data');
+    print('[DEBUG][DatabaseHelper.insertHistorico] incidencia_codigo específico: ${data['incidencia_codigo']}');
+    return db.insert('historico', data);
   }
 
   Future<int> actualizarSincronizado(int id, bool sincronizado) async {

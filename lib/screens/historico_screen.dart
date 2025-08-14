@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../models/historico.dart';
+import '../models/incidencia.dart';
 import '../services/historico_service.dart';
+import '../services/incidencia_service.dart';
 
 const Color kPrimaryBlue = Color.fromARGB(255, 33, 150, 243);
 
@@ -41,6 +43,7 @@ class HistoricoScreen extends StatefulWidget {
 
 class _HistoricoScreenState extends State<HistoricoScreen> {
   List<Historico> registros = [];
+  List<Incidencia> incidencias = [];
   bool cargando = true;
   String? errorMsg;
   String? _dniUsuario;
@@ -82,6 +85,14 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         final dtB = DateTime.tryParse(fechaB) ?? DateTime.fromMillisecondsSinceEpoch(0);
         return dtA.compareTo(dtB);
       });
+
+      // Cargar incidencias para mostrar descripciones en el PDF
+      try {
+        incidencias = await IncidenciaService.cargarIncidenciasLocal(widget.cifEmpresa);
+      } catch (e) {
+        // Si no se pueden cargar las incidencias, continuamos sin ellas
+        print('No se pudieron cargar las incidencias: $e');
+      }
     } catch (e) {
       errorMsg = 'Error cargando registros: $e';
     }
@@ -216,9 +227,22 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
 
                 final incidenciasText = sesion.incidencias.isNotEmpty
                     ? sesion.incidencias.map((inc) {
-                        final c = inc.incidencia.incidenciaCodigo ?? '-';
-                        final o = inc.incidencia.observaciones ?? '';
-                        return '$c${o.isNotEmpty ? ' ($o)' : ''}';
+                        final codigo = inc.incidencia.incidenciaCodigo;
+                        
+                        // Si no hay código de incidencia, mostrar "Sin código"
+                        if (codigo == null || codigo.isEmpty) {
+                          return 'Sin código';
+                        }
+                        
+                        // Buscar la incidencia en la lista para obtener la descripción
+                        final incidencia = incidencias.firstWhere(
+                          (i) => i.codigo == codigo,
+                          orElse: () => Incidencia(codigo: codigo),
+                        );
+                        final descripcion = incidencia.descripcion ?? codigo;
+                        
+                        // Solo mostrar código y descripción
+                        return '$codigo - $descripcion';
                       }).join(', ')
                     : '-';
 
@@ -243,7 +267,17 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
 
   Future<void> _exportarPdfDescargar(List<SesionTrabajo> sesiones) async {
     try {
-      final pdf = await _crearPdf(sesiones);
+      // Usar datos locales para asegurar que las incidencias tengan toda la información
+      final fichajesLocales = await HistoricoService.obtenerFichajesUsuario(widget.usuario, widget.cifEmpresa);
+      final registrosFiltrados = fichajesLocales.where((h) {
+        String? fecha = (h.tipo == 'Salida') ? h.fechaSalida : h.fechaEntrada;
+        if (fecha == null || fecha.isEmpty) return false;
+        final dt = DateTime.tryParse(fecha);
+        return dt != null && dt.year == _selectedYear && dt.month == _selectedMonth;
+      }).toList();
+      final sesionesLocales = _agruparSesiones(registrosFiltrados);
+      
+      final pdf = await _crearPdf(sesionesLocales);
       final pdfBytes = await pdf.save();
       final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
 

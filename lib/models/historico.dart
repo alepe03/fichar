@@ -144,7 +144,7 @@ extension HistoricoPhp on Historico {
       map['fecha_salida'] = fechaSalida!;
     }
     // Si el fichaje es de tipo incidencia, enviamos el código de incidencia
-    if (tipo?.toLowerCase() == 'incidencia' && incidenciaCodigo != null && incidenciaCodigo!.isNotEmpty) {
+    if (tipo != null && tipo!.toLowerCase().contains('incidencia') && incidenciaCodigo != null && incidenciaCodigo!.isNotEmpty) {
       map['incidencia_codigo'] = incidenciaCodigo!;
     }
     // Enviamos latitud y longitud si existen
