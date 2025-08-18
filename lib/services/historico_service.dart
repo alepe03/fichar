@@ -3,6 +3,8 @@ import '../db/database_helper.dart';
 import 'package:http/http.dart' as http;
 import 'package:csv/csv.dart';
 import 'package:sqflite/sqflite.dart'; // Necesario para ConflictAlgorithm
+import '../config.dart';
+import 'web_config_service.dart';
 
 int? firstIntValue(List<Map<String, Object?>> results) {
   if (results.isEmpty) return null;
@@ -36,25 +38,40 @@ class HistoricoService {
 
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=301');
     final body = historico.toPhpBody();
-    print('[DEBUG][guardarFichajeRemoto] URL: $url, BODY: $body');
+    final headers = WebConfigService.getWebHeaders();
+    
+    print('[DEBUG][guardarFichajeRemoto] URL: $url, BODY: $body, HEADERS: $headers');
 
-    final response = await http.post(url, body: body);
-    print('[DEBUG][guardarFichajeRemoto] STATUS: ${response.statusCode}, RESPUESTA: ${response.body}');
+    try {
+      final response = await http.post(
+        url, 
+        body: body,
+        headers: headers,
+      ).timeout(WebConfigService.getWebTimeout());
+      
+      print('[DEBUG][guardarFichajeRemoto] STATUS: ${response.statusCode}, RESPUESTA: ${response.body}');
 
-    if (response.statusCode != 200) {
-      throw Exception('Error guardando fichaje en la nube: ${response.body}');
+      if (response.statusCode != 200) {
+        final errorMsg = WebConfigService.handleWebError('Error guardando fichaje en la nube: ${response.body}');
+        throw Exception(errorMsg);
+      }
+
+      // <-- NUEVO: detecta duplicado y NO reintentes, márcalo como sincronizado!
+      if (response.body.contains('DUPLICADO')) {
+        print('[SYNC] El UUID ya existe en la nube, se omite el reintento.');
+        return true; // Se considera sincronizado aunque sea duplicado
+      }
+
+      if (!response.body.startsWith('OK')) {
+        final errorMsg = WebConfigService.handleWebError('Error guardando fichaje en la nube: ${response.body}');
+        throw Exception(errorMsg);
+      }
+      return true;
+    } catch (e) {
+      final errorMsg = WebConfigService.handleWebError(e);
+      print('[ERROR][guardarFichajeRemoto] $errorMsg');
+      throw Exception(errorMsg);
     }
-
-    // <-- NUEVO: detecta duplicado y NO reintentes, márcalo como sincronizado!
-    if (response.body.contains('DUPLICADO')) {
-      print('[SYNC] El UUID ya existe en la nube, se omite el reintento.');
-      return true; // Se considera sincronizado aunque sea duplicado
-    }
-
-    if (!response.body.startsWith('OK')) {
-      throw Exception('Error guardando fichaje en la nube: ${response.body}');
-    }
-    return true;
   }
 
   static Future<bool> _tryRemotoConRetry(
@@ -146,123 +163,137 @@ class HistoricoService {
 
     print('--- ENTRA EN sincronizarHistoricoCompleto ---');
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=300&cif_empresa=$nombreBD');
-    final response = await http.get(url);
-
-    if (response.statusCode != 200) {
-      throw Exception('Error al obtener histórico completo: ${response.statusCode}');
-    }
-
-    final csvString = response.body;
-    List<List<dynamic>> csvTable = const CsvToListConverter(fieldDelimiter: ';').convert(csvString);
-
-    if (csvTable.isNotEmpty) {
-      csvTable.removeAt(0); // Quitar cabecera
-    }
-
-    if (csvTable.isEmpty) {
-      print('[HistoricoService] No hay registros para sincronizar.');
-      return;
-    }
-
-    final db = await DatabaseHelper.instance.database;
-
-    // SOLUCIÓN MEJORADA: Sube primero los pendientes locales
-    print('[SYNC] Subiendo fichajes pendientes locales...');
-    await sincronizarPendientes(token, baseUrl, nombreBD);
-
-    // NUEVA LÓGICA: NO borrar registros locales con incidencia_codigo
-    // Solo borrar registros del servidor que estén sincronizados y no tengan incidencia_codigo
-    print('[SYNC] Limpiando registros del servidor (preservando incidencias locales)...');
-    final registrosABorrar = await db.query(
-      'historico',
-      where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = "")',
-      whereArgs: [nombreBD],
-    );
-    print('[SYNC] Registros a borrar (sin incidencia_codigo): ${registrosABorrar.length}');
+    final headers = WebConfigService.getWebHeaders();
     
-    if (registrosABorrar.isNotEmpty) {
-      await db.delete(
-        'historico', 
-        where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = "")', 
-        whereArgs: [nombreBD]
-      );
-    }
+    print('[DEBUG][sincronizarHistoricoCompleto] URL: $url, HEADERS: $headers');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: headers,
+      ).timeout(WebConfigService.getWebTimeout());
 
-    for (var row in csvTable) {
-      if (row.length < 13) {
-        print('[WARN] Fila incompleta ignorada: $row');
-        continue;
+      if (response.statusCode != 200) {
+        final errorMsg = WebConfigService.handleWebError('Error al obtener histórico completo: ${response.statusCode}');
+        throw Exception(errorMsg);
       }
 
-      final data = {
-        'id': int.tryParse(row[0].toString()) ?? 0,
-        'cif_empresa': row[1].toString(),
-        'usuario': row[2].toString(),
-        'fecha_entrada': row[3]?.toString(),
-        'fecha_salida': row[4]?.toString(),
-        'tipo': row[5].toString(),
-        'incidencia_codigo': row[6]?.toString(),
-        'observaciones': row[7]?.toString(),
-        'nombre_empleado': row[8].toString(),
-        'dni_empleado': row[9].toString(),
-        'id_sucursal': row[10]?.toString(),
-        'latitud': row[11] != null && row[11].toString().isNotEmpty
-            ? double.tryParse(row[11].toString())
-            : null,
-        'longitud': row[12] != null && row[12].toString().isNotEmpty
-            ? double.tryParse(row[12].toString())
-            : null,
-        'uuid': row.length > 13 && row[13].toString().isNotEmpty ? row[13].toString() : '', // <--- UUID desde CSV
-        'sincronizado': 1,
-      };
+      final csvString = response.body;
+      List<List<dynamic>> csvTable = const CsvToListConverter(fieldDelimiter: ';').convert(csvString);
 
-      // NUEVA LÓGICA MEJORADA: Preservar registros locales con incidencia_codigo
-      final existing = await db.query(
+      if (csvTable.isNotEmpty) {
+        csvTable.removeAt(0); // Quitar cabecera
+      }
+
+      if (csvTable.isEmpty) {
+        print('[HistoricoService] No hay registros para sincronizar.');
+        return;
+      }
+
+      final db = await DatabaseHelper.instance.database;
+
+      // SOLUCIÓN MEJORADA: Sube primero los pendientes locales
+      print('[SYNC] Subiendo fichajes pendientes locales...');
+      await sincronizarPendientes(token, baseUrl, nombreBD);
+
+      // NUEVA LÓGICA: NO borrar registros locales con incidencia_codigo
+      // Solo borrar registros del servidor que estén sincronizados y no tengan incidencia_codigo
+      print('[SYNC] Limpiando registros del servidor (preservando incidencias locales)...');
+      final registrosABorrar = await db.query(
         'historico',
-        where: 'uuid = ? AND cif_empresa = ?',
-        whereArgs: [data['uuid'], nombreBD],
-        limit: 1,
+        where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = \'\')',
+        whereArgs: [nombreBD],
       );
+      print('[SYNC] Registros a borrar (sin incidencia_codigo): ${registrosABorrar.length}');
       
-      if (existing.isEmpty) {
-        // Insertar nuevo registro
-        print('[SYNC] Insertando nueva fila del servidor: $data');
-        await db.insert('historico', data);
-      } else {
-        final existingRecord = existing.first;
-        final existingIncidenciaCodigo = existingRecord['incidencia_codigo'];
-        final serverIncidenciaCodigo = data['incidencia_codigo'];
+      if (registrosABorrar.isNotEmpty) {
+        await db.delete(
+          'historico', 
+          where: 'sincronizado = 1 AND cif_empresa = ? AND (incidencia_codigo IS NULL OR incidencia_codigo = \'\')', 
+          whereArgs: [nombreBD]
+        );
+      }
+
+      for (var row in csvTable) {
+        if (row.length < 13) {
+          print('[WARN] Fila incompleta ignorada: $row');
+          continue;
+        }
+
+        final data = {
+          'id': int.tryParse(row[0].toString()) ?? 0,
+          'cif_empresa': row[1].toString(),
+          'usuario': row[2].toString(),
+          'fecha_entrada': row[3]?.toString(),
+          'fecha_salida': row[4]?.toString(),
+          'tipo': row[5].toString(),
+          'incidencia_codigo': row[6]?.toString(),
+          'observaciones': row[7]?.toString(),
+          'nombre_empleado': row[8].toString(),
+          'dni_empleado': row[9].toString(),
+          'id_sucursal': row[10]?.toString(),
+          'latitud': row[11] != null && row[11].toString().isNotEmpty
+              ? double.tryParse(row[11].toString())
+              : null,
+          'longitud': row[12] != null && row[12].toString().isNotEmpty
+              ? double.tryParse(row[12].toString())
+              : null,
+          'uuid': row.length > 13 && row[13].toString().isNotEmpty ? row[13].toString() : '', // <--- UUID desde CSV
+          'sincronizado': 1,
+        };
+
+        // NUEVA LÓGICA MEJORADA: Preservar registros locales con incidencia_codigo
+        final existing = await db.query(
+          'historico',
+          where: 'uuid = ? AND cif_empresa = ?',
+          whereArgs: [data['uuid'], nombreBD],
+          limit: 1,
+        );
         
-        // LÓGICA PRIORITARIA: Los datos locales con incidencia_codigo tienen prioridad
-        if (existingIncidenciaCodigo != null && existingIncidenciaCodigo.toString().isNotEmpty) {
-          // El registro local tiene incidencia_codigo, NO sobrescribir
-          print('[SYNC] 🔒 PRESERVANDO registro local con incidencia_codigo: "$existingIncidenciaCodigo"');
-          print('[SYNC]    Servidor tiene: "$serverIncidenciaCodigo" (ignorado)');
-        } else if (serverIncidenciaCodigo != null && serverIncidenciaCodigo.toString().isNotEmpty) {
-          // El servidor tiene incidencia_codigo válido, actualizar
-          print('[SYNC] ✅ Actualizando con datos del servidor (incidencia_codigo: $serverIncidenciaCodigo)');
-          await db.update(
-            'historico',
-            data,
-            where: 'uuid = ? AND cif_empresa = ?',
-            whereArgs: [data['uuid'], nombreBD],
-          );
+        if (existing.isEmpty) {
+          // Insertar nuevo registro
+          print('[SYNC] Insertando nueva fila del servidor: $data');
+          await db.insert('historico', data);
         } else {
-          // Ambos están vacíos, actualizar normalmente
-          print('[SYNC] 🔄 Actualizando registro sin incidencia_codigo');
-          await db.update(
-            'historico',
-            data,
-            where: 'uuid = ? AND cif_empresa = ?',
-            whereArgs: [data['uuid'], nombreBD],
-          );
+          final existingRecord = existing.first;
+          final existingIncidenciaCodigo = existingRecord['incidencia_codigo'];
+          final serverIncidenciaCodigo = data['incidencia_codigo'];
+          
+          // LÓGICA PRIORITARIA: Los datos locales con incidencia_codigo tienen prioridad
+          if (existingIncidenciaCodigo != null && existingIncidenciaCodigo.toString().isNotEmpty) {
+            // El registro local tiene incidencia_codigo, NO sobrescribir
+            print('[SYNC] 🔒 PRESERVANDO registro local con incidencia_codigo: "$existingIncidenciaCodigo"');
+            print('[SYNC]    Servidor tiene: "$serverIncidenciaCodigo" (ignorado)');
+          } else if (serverIncidenciaCodigo != null && serverIncidenciaCodigo.toString().isNotEmpty) {
+            // El servidor tiene incidencia_codigo válido, actualizar
+            print('[SYNC] ✅ Actualizando con datos del servidor (incidencia_codigo: $serverIncidenciaCodigo)');
+            await db.update(
+              'historico',
+              data,
+              where: 'uuid = ? AND cif_empresa = ?',
+              whereArgs: [data['uuid'], nombreBD],
+            );
+          } else {
+            // Ambos están vacíos, actualizar normalmente
+            print('[SYNC] 🔄 Actualizando registro sin incidencia_codigo');
+            await db.update(
+              'historico',
+              data,
+              where: 'uuid = ? AND cif_empresa = ?',
+              whereArgs: [data['uuid'], nombreBD],
+            );
+          }
         }
       }
-    }
 
-    final count = firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM historico WHERE cif_empresa = ?', [nombreBD]),
-    );
-    print('[DEBUG][sincronizarHistoricoCompleto] Sincronización completada, $count registros insertados.');
+      final count = firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM historico WHERE cif_empresa = ?', [nombreBD]),
+      );
+      print('[DEBUG][sincronizarHistoricoCompleto] Sincronización completada, $count registros insertados.');
+    } catch (e) {
+      final errorMsg = WebConfigService.handleWebError(e);
+      print('[ERROR][sincronizarHistoricoCompleto] $errorMsg');
+      throw Exception(errorMsg);
+    }
   }
 }

@@ -18,21 +18,95 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Sistema de Fichaje Trivalle">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="fichar">
+  <meta name="apple-mobile-web-app-title" content="Fichar Trivalle">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>fichar</title>
+  <title>Fichar Trivalle</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Configuración adicional para web -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  
+  <!-- Preload de recursos críticos -->
+  <link rel="preload" href="sqlite3.wasm" as="fetch" crossorigin="anonymous">
+  <link rel="preload" href="sqflite_sw.js" as="script">
+  
+  <style>
+    /* Estilos de carga inicial */
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .loading-content {
+      text-align: center;
+    }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top: 4px solid white;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <!-- Pantalla de carga inicial -->
+  <div id="loading" class="loading">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <h2>Cargando Fichar Trivalle...</h2>
+      <p>Inicializando aplicación...</p>
+    </div>
+  </div>
+
+  <script>
+    // Configuración global para web
+    window.flutterConfiguration = {
+      canvasKitBaseUrl: "/canvaskit/",
+      apiBaseUrl: "https://www.trivalle.com/apiFichar/",
+      enableLogging: true
+    };
+    
+    // Manejo de errores global
+    window.addEventListener('error', function(e) {
+      console.error('Error global:', e.error);
+      if (e.error && e.error.message && e.error.message.includes('CORS')) {
+        document.getElementById('loading').innerHTML = `
+          <div class="loading-content">
+            <h2>Error de CORS</h2>
+            <p>La aplicación no puede conectarse con el servidor debido a restricciones de seguridad.</p>
+            <p>Contacta al administrador del sistema.</p>
+          </div>
+        `;
+      }
+    });
+    
+    // Ocultar pantalla de carga cuando Flutter esté listo
+    window.addEventListener('flutter-first-frame', function() {
+      document.getElementById('loading').style.display = 'none';
+    });
+  </script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

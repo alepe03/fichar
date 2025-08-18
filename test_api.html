@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Fichar</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .loading { color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test API Fichar Trivalle</h1>
+    
+    <div class="test-section info">
+        <h3>📋 Información del Test</h3>
+        <p><strong>URL API:</strong> https://www.trivalle.com/apiFichar/trvFichar.php</p>
+        <p><strong>Token de Prueba:</strong> 123456.abcd</p>
+        <p><strong>Base de Datos:</strong> qame400</p>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 Test 1: Conexión Básica (Code=0)</h3>
+        <button onclick="testConnection()">Probar Conexión</button>
+        <div id="result1"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔑 Test 2: Obtener Token (Code=999)</h3>
+        <button onclick="testToken()">Obtener Token</button>
+        <div id="result2"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>👥 Test 3: Leer Empleados (Code=200)</h3>
+        <button onclick="testEmpleados()">Leer Empleados</button>
+        <div id="result3"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 Test 4: Leer Histórico (Code=300)</h3>
+        <button onclick="testHistorico()">Leer Histórico</button>
+        <div id="result4"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🚨 Test 5: Leer Incidencias (Code=400)</h3>
+        <button onclick="testIncidencias()">Leer Incidencias</button>
+        <div id="result5"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🏢 Test 6: Validar CIF (Code=700)</h3>
+        <button onclick="testCif()">Validar CIF</button>
+        <div id="result6"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📝 Test 7: Insertar Fichaje (Code=301)</h3>
+        <button onclick="testInsertFichaje()">Insertar Fichaje de Prueba</button>
+        <div id="result7"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔍 Test 8: CORS Preflight</h3>
+        <button onclick="testCors()">Test CORS</button>
+        <div id="result8"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://www.trivalle.com/apiFichar/trvFichar.php';
+        const TOKEN = '123456.abcd';
+        const BD = 'qame400';
+        const CIF_EMPRESA = 'qame400';
+
+        function showResult(elementId, content, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.className = isSuccess ? 'success' : 'error';
+            element.innerHTML = `<pre>${content}</pre>`;
+        }
+
+        function showLoading(elementId) {
+            const element = document.getElementById(elementId);
+            element.className = 'loading';
+            element.innerHTML = '<p>⏳ Probando...</p>';
+        }
+
+        async function testAPI(url, description) {
+            try {
+                console.log(`Testing: ${description}`);
+                console.log(`URL: ${url}`);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': '*/*',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+                
+                console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, response.headers);
+                
+                const text = await response.text();
+                console.log(`Response body: ${text}`);
+                
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    headers: response.headers,
+                    body: text
+                };
+            } catch (error) {
+                console.error(`Error in ${description}:`, error);
+                return {
+                    success: false,
+                    error: error.message,
+                    type: error.name
+                };
+            }
+        }
+
+        async function testConnection() {
+            showLoading('result1');
+            const result = await testAPI(`${API_BASE}?Code=0`, 'Conexión Básica');
+            
+            if (result.success) {
+                showResult('result1', `✅ Conexión exitosa\nStatus: ${result.status}\nRespuesta: ${result.body}`);
+            } else {
+                showResult('result1', `❌ Error de conexión\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testToken() {
+            showLoading('result2');
+            const result = await testAPI(`${API_BASE}?Code=999`, 'Obtener Token');
+            
+            if (result.success) {
+                showResult('result2', `✅ Token obtenido\nStatus: ${result.status}\nRespuesta: ${result.body}`);
+            } else {
+                showResult('result2', `❌ Error obteniendo token\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testEmpleados() {
+            showLoading('result3');
+            const result = await testAPI(`${API_BASE}?Token=${TOKEN}&Bd=${BD}&Code=200&cif_empresa=${CIF_EMPRESA}`, 'Leer Empleados');
+            
+            if (result.success) {
+                showResult('result3', `✅ Empleados leídos\nStatus: ${result.status}\nPrimeras líneas:\n${result.body.split('\n').slice(0, 5).join('\n')}`);
+            } else {
+                showResult('result3', `❌ Error leyendo empleados\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testHistorico() {
+            showLoading('result4');
+            const result = await testAPI(`${API_BASE}?Token=${TOKEN}&Bd=${BD}&Code=300&cif_empresa=${CIF_EMPRESA}`, 'Leer Histórico');
+            
+            if (result.success) {
+                showResult('result4', `✅ Histórico leído\nStatus: ${result.status}\nPrimeras líneas:\n${result.body.split('\n').slice(0, 5).join('\n')}`);
+            } else {
+                showResult('result4', `❌ Error leyendo histórico\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testIncidencias() {
+            showLoading('result5');
+            const result = await testAPI(`${API_BASE}?Token=${TOKEN}&Bd=${BD}&Code=400&cif_empresa=${CIF_EMPRESA}`, 'Leer Incidencias');
+            
+            if (result.success) {
+                showResult('result5', `✅ Incidencias leídas\nStatus: ${result.status}\nRespuesta: ${result.body}`);
+            } else {
+                showResult('result5', `❌ Error leyendo incidencias\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testCif() {
+            showLoading('result6');
+            const result = await testAPI(`${API_BASE}?Code=700&cif_empresa=${CIF_EMPRESA}&Token=${TOKEN}`, 'Validar CIF');
+            
+            if (result.success) {
+                showResult('result6', `✅ CIF validado\nStatus: ${result.status}\nRespuesta: ${result.body}`);
+            } else {
+                showResult('result6', `❌ Error validando CIF\n${result.error || `Status: ${result.status}`}\nRespuesta: ${result.body || 'Sin respuesta'}`, false);
+            }
+        }
+
+        async function testInsertFichaje() {
+            showLoading('result7');
+            
+            const testData = new URLSearchParams({
+                'Token': TOKEN,
+                'Bd': BD,
+                'Code': '301',
+                'cif_empresa': CIF_EMPRESA,
+                'usuario': 'test_user',
+                'fecha_entrada': new Date().toISOString().slice(0, 19).replace('T', ' '),
+                'tipo': 'Entrada',
+                'nombre_empleado': 'Usuario de Prueba',
+                'dni_empleado': '12345678A',
+                'uuid': 'test-' + Date.now()
+            });
+
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': '*/*'
+                    },
+                    body: testData
+                });
+
+                const text = await response.text();
+                
+                if (response.ok) {
+                    showResult('result7', `✅ Fichaje insertado\nStatus: ${response.status}\nRespuesta: ${text}`);
+                } else {
+                    showResult('result7', `❌ Error insertando fichaje\nStatus: ${response.status}\nRespuesta: ${text}`, false);
+                }
+            } catch (error) {
+                showResult('result7', `❌ Error de conexión\n${error.message}`, false);
+            }
+        }
+
+        async function testCors() {
+            showLoading('result8');
+            
+            try {
+                // Test OPTIONS preflight
+                const response = await fetch(API_BASE, {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': window.location.origin,
+                        'Access-Control-Request-Method': 'POST',
+                        'Access-Control-Request-Headers': 'Content-Type'
+                    }
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers')
+                };
+                
+                showResult('result8', `✅ CORS Preflight exitoso\nStatus: ${response.status}\nHeaders CORS:\n${JSON.stringify(corsHeaders, null, 2)}`);
+            } catch (error) {
+                showResult('result8', `❌ Error en CORS preflight\n${error.message}`, false);
+            }
+        }
+
+        // Auto-test al cargar la página
+        window.addEventListener('load', () => {
+            console.log('🚀 Página de test cargada');
+            console.log('📍 Origen actual:', window.location.origin);
+            console.log('🌐 User Agent:', navigator.userAgent);
+        });
+    </script>
+</body>
+</html>
