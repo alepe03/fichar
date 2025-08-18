@@ -21,7 +21,6 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
   final TextEditingController _pinController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  List<String> listaCifs = [];
   String? cifSeleccionado;
 
   bool vaIsLoading = false;
@@ -33,21 +32,15 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCifs();
+    _loadCifActivo();
   }
 
-  Future<void> _loadCifs() async {
+  Future<void> _loadCifActivo() async {
     final prefs = await SharedPreferences.getInstance();
-    final cifs = prefs.getStringList('cif_empresa_list');
     final ultimoCif = prefs.getString('cif_empresa');
-    if (cifs != null && cifs.isNotEmpty) {
-      setState(() {
-        listaCifs = cifs;
-        cifSeleccionado = (ultimoCif != null && cifs.contains(ultimoCif))
-            ? ultimoCif
-            : cifs.first;
-      });
-    }
+    setState(() {
+      cifSeleccionado = (ultimoCif != null && ultimoCif.isNotEmpty) ? ultimoCif : null;
+    });
   }
 
   Future<Empleado?> _buscarEmpleadoPorIdPin(String id, String pin, String cif) async {
@@ -78,7 +71,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
     }
     if (cifSeleccionado == null || cifSeleccionado!.isEmpty) {
       setState(() {
-        vaErrorMessage = "Debes seleccionar una empresa (CIF)";
+        vaErrorMessage = "No se encontró CIF activo. Inicia sesión normal primero para guardar el CIF.";
         vaIsLoading = false;
       });
       return;
@@ -86,7 +79,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. Sincronizar empleados antes de buscar localmente, igual que en login normal
+    // 1) Sincronizar empleados como en el login normal
     try {
       await EmpleadoService.sincronizarEmpleadosCompleto(
         prefs.getString('token') ?? '123456.abcd',
@@ -94,6 +87,8 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
         cifSeleccionado!,
       );
     } catch (e) {
+      // No bloqueamos el login por esto
+      // ignore: avoid_print
       print('Error sincronizando empleados antes de login empresa: $e');
     }
 
@@ -111,16 +106,13 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
       return;
     }
 
-    // Limpiar SharedPreferences excepto estado de fichaje para mantener continuidad
+    // Limpiar algunas prefs (manteniendo estado de fichaje si lo usas)
     await prefs.remove('usuario');
     await prefs.remove('nombre_empleado');
     await prefs.remove('dni_empleado');
     await prefs.remove('id_sucursal');
     await prefs.remove('rol');
     await prefs.remove('puede_localizar');
-    // Comentado para mantener estado de fichaje:
-    // await prefs.remove('ultimo_tipo_fichaje_${empleado.usuario}_${empleado.cifEmpresa}');
-    // await prefs.remove('hora_entrada_${empleado.usuario}_${empleado.cifEmpresa}');
 
     await prefs.setString('cif_empresa', empleado.cifEmpresa);
     await prefs.setString('usuario', empleado.usuario);
@@ -131,7 +123,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
     await prefs.setString('rol', empleado.rol ?? '');
     await prefs.setString('tipo_login', 'id_pin');
 
-    // Opcional: sincronizar horarios o datos necesarios para fichaje
+    // 2) (Opcional) sincronizar horarios
     try {
       await HorariosService.descargarYGuardarHorariosEmpresa(
         cifEmpresa: cifSeleccionado!,
@@ -139,18 +131,21 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
         baseUrl: prefs.getString('baseUrl') ?? 'https://www.trivalle.com/apiFichar/',
       );
     } catch (e) {
+      // ignore: avoid_print
       print('Error cargando horarios tras login empresa: $e');
     }
 
     if (!mounted) return;
 
+    // Navegar a Fichar
+    // ignore: avoid_print
     print('[LOGIN EMPRESA] Navegando a FicharScreen para usuario: ${empleado.usuario} (multi siempre true)');
 
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => FicharScreen(
           esMultiFichaje: true,
-          desdeLoginEmpresa: true, // <-- Aquí pasamos el flag
+          desdeLoginEmpresa: true,
         ),
       ),
       (route) => false,
@@ -169,7 +164,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
     );
 
     if (result != null && result is String) {
-      // Esperamos que el formato sea: id;pin
+      // Esperamos: id;pin
       final parts = result.split(';');
       if (parts.length >= 2) {
         final id = parts[0].trim();
@@ -217,6 +212,8 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final ancho = MediaQuery.of(context).size.width;
+    final hayCif = cifSeleccionado != null && cifSeleccionado!.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -260,37 +257,35 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
                       onTap: _handleLogoTap,
                       child: Image.asset('assets/images/iconotrivalle.png', width: 90, height: 90),
                     ),
-                    const SizedBox(height: 24),
-                    if (listaCifs.isEmpty)
-                      const Text(
-                        'No hay CIFs disponibles. Ve a la pantalla anterior para añadirlos.',
-                        style: TextStyle(color: Colors.red),
+                    const SizedBox(height: 16),
+                    if (!hayCif)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8.0),
+                        child: Text(
+                          'No hay CIF activo. Haz login normal primero para registrar el CIF.',
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
                       )
                     else
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Selecciona CIF',
-                          labelStyle: const TextStyle(color: Colors.blue),
-                          prefixIcon: const Icon(Icons.business, color: Colors.blue),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.blue, width: 2),
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.business, color: Colors.blue),
+                            const SizedBox(width: 6),
+                            Text(
+                              cifSeleccionado!,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                        value: cifSeleccionado,
-                        iconEnabledColor: Colors.blue,
-                        dropdownColor: const Color(0xFFEAEAEA),
-                        items: listaCifs
-                            .map((c) => DropdownMenuItem(
-                                  value: c,
-                                  child: Text(c, style: const TextStyle(color: Colors.black)),
-                                ))
-                            .toList(),
-                        onChanged: (v) => setState(() => cifSeleccionado = v),
-                        validator: (v) => v == null || v.isEmpty ? 'Selecciona un CIF' : null,
                       ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _idController,
                       decoration: const InputDecoration(
@@ -349,7 +344,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
                                 fontSize: 18,
                               ),
                             ),
-                            onPressed: vaIsLoading ? null : () => _login(),
+                            onPressed: (!vaIsLoading && hayCif) ? () => _login() : null,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -382,7 +377,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
   }
 }
 
-// Pantalla para escanear QR con MOBILE_SCANNER
+// =============== Pantalla para escanear QR con MOBILE_SCANNER ===============
 class QRViewScreen extends StatefulWidget {
   const QRViewScreen({Key? key}) : super(key: key);
 
@@ -392,8 +387,17 @@ class QRViewScreen extends StatefulWidget {
 
 class _QRViewScreenState extends State<QRViewScreen> {
   bool _isScanned = false;
-  final MobileScannerController controller = MobileScannerController();
-  bool _isFrontCamera = false; // Estado para la cámara
+
+  // Cámara frontal por defecto
+  final MobileScannerController controller = MobileScannerController(
+    facing: CameraFacing.front,
+    // Opcionalmente puedes ajustar:
+    // detectionSpeed: DetectionSpeed.noDuplicates,
+    // torchEnabled: false,
+  );
+
+  // Para icono del botón
+  bool _isFrontCamera = true;
 
   @override
   void dispose() {
@@ -403,8 +407,8 @@ class _QRViewScreenState extends State<QRViewScreen> {
 
   void _onDetect(BarcodeCapture capture) {
     if (_isScanned) return;
-    final barcode = capture.barcodes.first;
-    final code = barcode.rawValue;
+    final barcode = capture.barcodes.firstOrNull; // evita excepciones si viene vacío
+    final code = barcode?.rawValue;
     if (code != null && code.isNotEmpty) {
       _isScanned = true;
       controller.stop();
@@ -412,10 +416,10 @@ class _QRViewScreenState extends State<QRViewScreen> {
     }
   }
 
-  void _toggleCamera() {
+  Future<void> _toggleCamera() async {
+    await controller.switchCamera();
     setState(() {
       _isFrontCamera = !_isFrontCamera;
-      controller.switchCamera();
     });
   }
 
@@ -440,6 +444,7 @@ class _QRViewScreenState extends State<QRViewScreen> {
                   controller.stop();
                   Navigator.of(context).pop();
                 },
+                tooltip: 'Cerrar',
               ),
             ),
           ),
@@ -447,13 +452,19 @@ class _QRViewScreenState extends State<QRViewScreen> {
             bottom: 30,
             right: 30,
             child: FloatingActionButton(
-              backgroundColor: Colors.blue.withOpacity(0.8),
+              backgroundColor: Colors.blue.withOpacity(0.85),
               onPressed: _toggleCamera,
               child: Icon(_isFrontCamera ? Icons.camera_rear : Icons.camera_front),
+              tooltip: _isFrontCamera ? 'Cambiar a trasera' : 'Cambiar a frontal',
             ),
           ),
         ],
       ),
     );
   }
+}
+
+// ===== Helper extension para evitar crashes si no hay barcodes =====
+extension _SafeFirst<T> on List<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
