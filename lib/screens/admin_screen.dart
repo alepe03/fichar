@@ -7,6 +7,9 @@ import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
 import 'package:open_file/open_file.dart';
+import 'package:flutter/foundation.dart';
+import 'package:universal_html/html.dart' as html;
+
 
 import '../models/empleado.dart';
 import '../models/historico.dart';
@@ -111,7 +114,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
 
   // === GENERACIÓN DEL QR Y PDF ===
 
-  Future<File> generarPdfQrEmpleado(Empleado emp) async {
+  Future<dynamic> generarPdfQrEmpleado(Empleado emp) async {
     final id = emp.id.toString();
     final pin = emp.pinFichaje ?? '0000';
     final qrData = '$id;$pin'; // <- QR en formato plano
@@ -143,20 +146,45 @@ class _UsuariosTabState extends State<UsuariosTab> {
         ),
       ),
     );
-    final output = await getTemporaryDirectory();
-    final file = File("${output.path}/qr_fichaje_${emp.usuario}.pdf");
-    await file.writeAsBytes(await pdf.save());
-    return file;
+
+    if (kIsWeb) {
+      // En web, generar el PDF y mostrar mensaje de éxito
+      // El usuario puede usar la función de descarga del navegador
+      final bytes = await pdf.save();
+      // En web, solo retornamos los bytes para que se puedan descargar
+      return bytes;
+    } else {
+      // En móvil/desktop, usar path_provider como antes
+      final output = await getTemporaryDirectory();
+      final file = File("${output.path}/qr_fichaje_${emp.usuario}.pdf");
+      await file.writeAsBytes(await pdf.save());
+      return file;
+    }
   }
 
   Future<void> _generarYMostrarQR(BuildContext context, Empleado emp) async {
     try {
-      final file = await generarPdfQrEmpleado(emp);
-      await OpenFile.open(file.path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PDF con QR generado. Puedes enviarlo por email al empleado.')),
-        );
+      if (kIsWeb) {
+        // En web, generar y descargar automáticamente
+        final result = await generarPdfQrEmpleado(emp);
+        if (result is List<int>) {
+          // Crear un blob y descargarlo
+          _downloadPdfWeb(result, 'qr_fichaje_${emp.usuario}.pdf');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF con QR generado y descargado. Puedes enviarlo por email al empleado.')),
+            );
+          }
+        }
+      } else {
+        // En móvil/desktop, generar y abrir
+        final file = await generarPdfQrEmpleado(emp);
+        await OpenFile.open(file.path);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF con QR generado. Puedes enviarlo por email al empleado.')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -164,6 +192,23 @@ class _UsuariosTabState extends State<UsuariosTab> {
           SnackBar(content: Text('Error generando QR: $e'), backgroundColor: Colors.redAccent),
         );
       }
+    }
+  }
+
+  // Función para descargar PDF en web
+  void _downloadPdfWeb(List<int> bytes, String filename) {
+    if (kIsWeb) {
+      // Crear un blob y descargarlo usando universal_html
+      final blob = html.Blob([bytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', filename)
+        ..style.display = 'none';
+      
+      html.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+      html.Url.revokeObjectUrl(url);
     }
   }
 
@@ -1397,14 +1442,20 @@ class _FichajesTabState extends State<FichajesTab> {
               pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)));
 
   // ------------------ Guardado ------------------
-  Future<String> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final fileName =
-        'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf';
-    final filePath = '${dir.path}/$fileName';
-    final file = File(filePath);
-    await file.writeAsBytes(pdfBytes);
-    return filePath;
+  Future<dynamic> _guardarPdfEnDispositivo(Uint8List pdfBytes) async {
+    if (kIsWeb) {
+      // En web, retornar los bytes para descarga
+      return pdfBytes;
+    } else {
+      // En móvil/desktop, usar path_provider como antes
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName =
+          'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf';
+      final filePath = '${dir.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+      return filePath;
+    }
   }
 
   Future<void> _exportarPdfDescargar(
@@ -1427,19 +1478,34 @@ class _FichajesTabState extends State<FichajesTab> {
         horarios: horarios,
       );
       final pdfBytes = await pdf.save();
-      final rutaGuardado = await _guardarPdfEnDispositivo(pdfBytes);
+      final resultado = await _guardarPdfEnDispositivo(pdfBytes);
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('PDF guardado en: $rutaGuardado')));
-      }
+      if (kIsWeb) {
+        // En web, descargar automáticamente
+        if (resultado is Uint8List) {
+          _downloadPdfWeb(resultado, 'fichajes_${_selectedYear}_${_selectedMonth.toString().padLeft(2, '0')}_${_selectedUsuario ?? 'todos'}.pdf');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF exportado y descargado correctamente')),
+            );
+          }
+        }
+      } else {
+        // En móvil/desktop, guardar y abrir
+        if (resultado is String) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('PDF guardado en: $resultado')));
+          }
 
-      final resultado = await OpenFile.open(rutaGuardado);
-      if (resultado.type != ResultType.done && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('No se pudo abrir el PDF automáticamente.')),
-        );
+          final openResult = await OpenFile.open(resultado);
+          if (openResult.type != ResultType.done && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('No se pudo abrir el PDF automáticamente.')),
+            );
+          }
+        }
       }
     } catch (e) {
       if (context.mounted) {
@@ -1447,6 +1513,23 @@ class _FichajesTabState extends State<FichajesTab> {
           SnackBar(content: Text('Error al exportar PDF: $e')),
         );
       }
+    }
+  }
+
+  // Función para descargar PDF en web
+  void _downloadPdfWeb(List<int> bytes, String filename) {
+    if (kIsWeb) {
+      // Crear un blob y descargarlo usando universal_html
+      final blob = html.Blob([bytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', filename)
+        ..style.display = 'none';
+      
+      html.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+      html.Url.revokeObjectUrl(url);
     }
   }
 

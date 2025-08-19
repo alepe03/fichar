@@ -37,8 +37,8 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   
   <!-- Preload de recursos críticos -->
-  <link rel="preload" href="sqlite3.wasm" as="fetch" crossorigin="anonymous">
-  <link rel="preload" href="sqflite_sw.js" as="script">
+  <link rel="preload" href="./sqlite3.wasm" as="fetch" crossorigin="anonymous">
+  <link rel="preload" href="./sqflite_sw.js" as="script">
   
   <style>
     /* Estilos de carga inicial */
@@ -80,13 +80,6 @@
   </div>
 
   <script>
-    // Configuración global para web
-    window.flutterConfiguration = {
-      canvasKitBaseUrl: "/canvaskit/",
-      apiBaseUrl: "https://www.trivalle.com/apiFichar/",
-      enableLogging: true
-    };
-    
     // Manejo de errores global
     window.addEventListener('error', function(e) {
       console.error('Error global:', e.error);

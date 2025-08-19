@@ -38,6 +38,7 @@ dependencies:
   uuid: ^4.3.3 
   crypto: ^3.0.2
   mobile_scanner: ^3.5.5
+  universal_html: ^2.2.4
 
 
 
