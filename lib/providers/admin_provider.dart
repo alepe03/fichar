@@ -13,6 +13,7 @@ import '../services/empleado_service.dart';
 import '../services/incidencia_service.dart';
 import '../services/historico_service.dart';
 import '../services/horarios_service.dart';
+import '../config.dart'; // Para DatabaseConfig
 
 /// Provider principal para la gestión de datos de la empresa y sincronización.
 /// Incluye empleados, históricos, incidencias, horarios y (nuevo) lectura del
@@ -73,7 +74,7 @@ class AdminProvider extends ChangeNotifier {
 
     // Code=500 -> LeoEmpresas(), tu backend devuelve CSV con cabecera:
     // "cif_empresa;nombre;direccion;telefono;codigo_postal;email;basedatos;max_usuarios_activos;"
-    final url = Uri.parse('$baseUrl?Token=$token&Bd=qame400&Code=500');
+    final url = Uri.parse('$baseUrl?Token=$token&Bd=${DatabaseConfig.databaseName}&Code=500');
 
     try {
       final resp = await http.get(url);

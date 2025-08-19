@@ -247,7 +247,16 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text('Editar ${empresa.nombre}'),
+        backgroundColor: const Color(0xFFEAEAEA),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Editar ${empresa.nombre}',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2196F3),
+            fontSize: 18,
+          ),
+        ),
         content: SingleChildScrollView(
           child: Column(
             children: [
@@ -258,26 +267,26 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
               ),
               const SizedBox(height: 8),
               TextField(controller: nombreCtrl, decoration: _inputStyle('Nombre', Icons.business, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: limiteCtrl, decoration: _inputStyle('Límite Usuarios', Icons.people, Colors.blue), keyboardType: TextInputType.number),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: direccionCtrl, decoration: _inputStyle('Dirección', Icons.place, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: telefonoCtrl, decoration: _inputStyle('Teléfono', Icons.phone, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: cpCtrl, decoration: _inputStyle('Código Postal', Icons.markunread_mailbox, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: emailCtrl, decoration: _inputStyle('Email', Icons.email, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(controller: bdCtrl, decoration: _inputStyle('Base de Datos', Icons.storage, Colors.blue)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               // NUEVOS
               TextField(
                 controller: cuotaCtrl,
                 decoration: _inputStyle('Cuota (€)', Icons.euro, Colors.blue),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               TextField(
                 controller: observacionesCtrl,
                 maxLines: 3,
@@ -289,9 +298,28 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2196F3),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              elevation: 2,
+            ),
             onPressed: () async {
               final token = await _getToken();
               final nuevaEmpresa = Empresa(
@@ -329,7 +357,13 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
                 }
               }
             },
-            child: const Text('Guardar'),
+            child: const Text(
+              'Guardar',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -356,11 +390,27 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
           itemBuilder: (_, i) {
             final e = empresas[i];
             return Card(
+              color: const Color(0xFFEAEAEA),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
               child: ListTile(
-                title: Text(e.nombre),
-                subtitle: Text('CIF: ${e.cifEmpresa} • Límite: ${e.maxUsuarios ?? "-"}'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                title: Text(
+                  e.nombre,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                subtitle: Text(
+                  'CIF: ${e.cifEmpresa} • Límite: ${e.maxUsuarios ?? "-"}',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 14,
+                  ),
+                ),
                 trailing: IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue),
+                  icon: const Icon(Icons.edit, color: Color(0xFF2196F3), size: 22),
                   onPressed: () => _mostrarDialogoEditar(e),
                 ),
               ),
@@ -396,20 +446,39 @@ class _AdminTrivalleScreenState extends State<AdminTrivalleScreen>
               ElevatedButton(
                 onPressed: details.onStepContinue,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: const Color(0xFF2196F3),
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  elevation: 2,
                 ),
                 child: Text(
                   _currentStep == 2
                       ? (_isLoading ? 'Procesando...' : 'Crear Empresa')
                       : 'Continuar',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               if (_currentStep > 0)
                 TextButton(
                   onPressed: details.onStepCancel,
-                  child: const Text('Atrás', style: TextStyle(color: Colors.black)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                  child: Text(
+                    'Atrás',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
             ],
           ),

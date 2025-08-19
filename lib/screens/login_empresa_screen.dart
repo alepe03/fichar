@@ -6,6 +6,7 @@ import '../db/database_helper.dart';
 import '../models/empleado.dart';
 import '../services/empleado_service.dart';  // <-- Importa el servicio para sincronizar empleados
 import '../services/horarios_service.dart';  // <-- Importa el servicio para sincronizar horarios si lo tienes
+import '../config.dart'; // Para DatabaseConfig
 import 'fichar_screen.dart';
 import 'login_screen.dart';
 
@@ -82,7 +83,7 @@ class _EmpresaLoginScreenState extends State<EmpresaLoginScreen> {
     // 1) Sincronizar empleados como en el login normal
     try {
       await EmpleadoService.sincronizarEmpleadosCompleto(
-        prefs.getString('token') ?? '123456.abcd',
+        prefs.getString('token') ?? DatabaseConfig.apiToken,
         prefs.getString('baseUrl') ?? 'https://www.trivalle.com/apiFichar/',
         cifSeleccionado!,
       );
@@ -468,3 +469,5 @@ class _QRViewScreenState extends State<QRViewScreen> {
 extension _SafeFirst<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
+
+

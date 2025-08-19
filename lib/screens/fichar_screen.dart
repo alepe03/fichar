@@ -307,7 +307,7 @@ class _FicharScreenState extends State<FicharScreen> {
         historico,
         token,
         BASE_URL,
-        'qame400',
+        DatabaseConfig.databaseName,
       );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$tipoParaGuardar registrada (online)')),
@@ -414,6 +414,7 @@ class _FicharScreenState extends State<FicharScreen> {
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return Dialog(
+              backgroundColor: const Color(0xFFEAEAEA),
               insetPadding: const EdgeInsets.symmetric(horizontal: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               child: Padding(
@@ -423,24 +424,87 @@ class _FicharScreenState extends State<FicharScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'Registrar incidencia',
-                        style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
+                        'Registrar Incidencia',
+                        style: TextStyle(
+                          fontSize: 20,
+                          color: Color(0xFF2196F3),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 18),
                       cargandoIncidencias
                           ? const CircularProgressIndicator()
-                          : DropdownButtonFormField<Incidencia>(
-                              value: seleccionada,
-                              items: listaIncidencias
-                                  .map((inc) => DropdownMenuItem(
-                                        value: inc,
-                                        child: Text(inc.descripcion ?? inc.codigo),
-                                      ))
-                                  .toList(),
-                              onChanged: (valor) => setStateDialog(() => seleccionada = valor),
-                              decoration: const InputDecoration(
+                          : InputDecorator(
+                              decoration: InputDecoration(
                                 labelText: 'Tipo de incidencia',
-                                border: OutlineInputBorder(),
+                                labelStyle: TextStyle(color: Colors.grey.shade700),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.grey.shade400),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.grey.shade400),
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<Incidencia>(
+                                  value: seleccionada,
+                                  isExpanded: true,
+                                  items: listaIncidencias
+                                      .map((inc) => DropdownMenuItem(
+                                            value: inc,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              child: Text(
+                                                inc.descripcion ?? inc.codigo,
+                                                style: TextStyle(
+                                                  color: Colors.grey.shade800,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ))
+                                      .toList(),
+                                  onChanged: (valor) => setStateDialog(() => seleccionada = valor),
+                                  dropdownColor: Colors.white,
+                                  elevation: 8,
+                                  borderRadius: BorderRadius.circular(8),
+                                  menuMaxHeight: 200,
+                                  hint: Text(
+                                    'Selecciona una incidencia',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  selectedItemBuilder: (BuildContext context) {
+                                    return listaIncidencias.map<Widget>((Incidencia inc) {
+                                      return Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          inc.descripcion ?? inc.codigo,
+                                          style: TextStyle(
+                                            color: Colors.grey.shade800,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      );
+                                    }).toList();
+                                  },
+                                ),
                               ),
                             ),
                       if (errorIncidencias != null)
@@ -451,18 +515,41 @@ class _FicharScreenState extends State<FicharScreen> {
                       const SizedBox(height: 18),
                       TextField(
                         controller: txtObservaciones,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Observaciones (opcional)',
-                          border: OutlineInputBorder(),
+                          labelStyle: TextStyle(color: Colors.grey.shade700),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade400),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade400),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
                         ),
                         maxLines: 2,
                       ),
                       CheckboxListTile(
                         value: confirmado,
                         onChanged: (v) => setStateDialog(() => confirmado = v ?? false),
-                        title: const Text('Confirmo la incidencia'),
-                        activeColor: Colors.blue,
+                        title: Text(
+                          'Confirmo la incidencia',
+                          style: TextStyle(
+                            color: Colors.grey.shade800,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                        activeColor: const Color(0xFF2196F3),
                         controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        dense: true,
                       ),
                       const SizedBox(height: 14),
                       Wrap(
@@ -471,14 +558,36 @@ class _FicharScreenState extends State<FicharScreen> {
                         alignment: WrapAlignment.end,
                         children: [
                           TextButton(
-                            child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            ),
+                            child: Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                             onPressed: () => Navigator.pop(ctx),
                           ),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2196F3),
+                              foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 3,
                             ),
-                            child: const Text('Registrar solo incidencia'),
+                            child: const Text(
+                              'Registrar solo incidencia',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
                                 ? () async {
                                     setStateDialog(() => _procesandoIncidencia = true);
@@ -509,10 +618,21 @@ class _FicharScreenState extends State<FicharScreen> {
                           if (vaUltimaAccion == 'Entrada')
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
+                                backgroundColor: const Color(0xFFF44336),
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 3,
                               ),
-                              child: const Text('Registrar y salir'),
+                              child: const Text(
+                                'Registrar y salir',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                               onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
                                   ? () async {
                                       setStateDialog(() => _procesandoIncidencia = true);
@@ -537,10 +657,21 @@ class _FicharScreenState extends State<FicharScreen> {
                           if (vaUltimaAccion != 'Entrada')
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                                backgroundColor: const Color(0xFF4CAF50),
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 3,
                               ),
-                              child: const Text('Registrar y entrar'),
+                              child: const Text(
+                                'Registrar y entrar',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                               onPressed: (seleccionada != null && confirmado && !_procesandoIncidencia)
                                   ? () async {
                                       setStateDialog(() => _procesandoIncidencia = true);
@@ -584,14 +715,48 @@ class _FicharScreenState extends State<FicharScreen> {
         final horas = dosCifras(duracion.inHours);
         final minutos = dosCifras(duracion.inMinutes.remainder(60));
         final segundos = dosCifras(duracion.inSeconds.remainder(60));
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2196F3).withOpacity(0.05),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFF2196F3).withOpacity(0.2),
+              width: 1,
+            ),
+          ),
           child: Column(
             children: [
-              const Text("Tiempo trabajado hoy:",
-                  style: TextStyle(fontSize: 17, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-              Text("$horas:$minutos:$segundos",
-                  style: const TextStyle(fontSize: 28, color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.timer,
+                    color: const Color(0xFF2196F3),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "Tiempo trabajado hoy",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: const Color(0xFF2196F3),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "$horas:$minutos:$segundos",
+                style: const TextStyle(
+                  fontSize: 28,
+                  color: Color(0xFF2196F3),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
+                  fontFamily: 'monospace',
+                ),
+              ),
             ],
           ),
         );
@@ -616,7 +781,7 @@ class _FicharScreenState extends State<FicharScreen> {
                 },
               )
             : null,
-        title: const Text('Fichar', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+        title: const Text('Control de Asistencia', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -625,66 +790,154 @@ class _FicharScreenState extends State<FicharScreen> {
         children: [
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-              width: ancho > 400 ? 400 : ancho * 0.97,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              width: ancho > 400 ? 400 : ancho * 0.92,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.07), blurRadius: 18, offset: const Offset(0, 7))],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2196F3).withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.work_history, size: 54, color: Colors.blue),
-                  const SizedBox(height: 10),
-                  const Text('¿Qué quieres hacer?',
-                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.blue)),
-                  const SizedBox(height: 15),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2196F3).withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.work_history,
+                      size: 48,
+                      color: Color(0xFF2196F3),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '¿Qué acción deseas realizar?',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   _temporizadorWidget(),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.login),
-                      label: const Text('Fichar entrada'),
+                      icon: const Icon(Icons.login, size: 22),
+                      label: const Text(
+                        'Fichar Entrada',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 16)),
+                        backgroundColor: const Color(0xFF4CAF50),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 3,
+                        shadowColor: const Color(0xFF4CAF50).withOpacity(0.3),
+                      ),
                       onPressed: (entradaHabilitada && !_entradaEnProceso && puedeFicharAhora() && !_loading)
                           ? _onEntrada
                           : null,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.logout),
-                      label: const Text('Fichar salida'),
+                      icon: const Icon(Icons.logout, size: 22),
+                      label: const Text(
+                        'Fichar Salida',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
+                        backgroundColor: const Color(0xFFF44336),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 3,
+                        shadowColor: const Color(0xFFF44336).withOpacity(0.3),
+                      ),
                       onPressed: (salidaHabilitada && !_salidaEnProceso && !_loading) ? _onSalida : null,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      label: const Text('Registrar incidencia'),
+                      icon: const Icon(Icons.warning_amber_rounded, size: 22),
+                      label: const Text(
+                        'Registrar Incidencia',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: Colors.blue,
-                        side: const BorderSide(color: Colors.blue, width: 2),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        foregroundColor: const Color(0xFF2196F3),
+                        side: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 2,
                       ),
                       onPressed: !_loading ? _onIncidencia : null,
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 24),
                   if (vaUltimaAccion.isNotEmpty)
-                    Text(
-                      'Última acción: $vaUltimaAccion',
-                      style: const TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.blueGrey),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.grey.shade600,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Última acción: $vaUltimaAccion',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               ),
@@ -692,10 +945,39 @@ class _FicharScreenState extends State<FicharScreen> {
           ),
           if (_loading)
             Container(
-              color: Colors.black.withOpacity(0.3),
-              child: const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.blue,
+              color: Colors.black.withOpacity(0.4),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
+                        color: Color(0xFF2196F3),
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Procesando...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

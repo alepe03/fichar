@@ -29,7 +29,7 @@ class IncidenciaService {
     if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
 
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=400&cif_empresa=$cifEmpresa');
     print('Descargando incidencias desde: $url');
@@ -67,7 +67,7 @@ class IncidenciaService {
     required Incidencia incidencia,
     required String token,
   }) async {
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
     final uri = Uri.parse('$BASE_URL?Code=401');
 
     final body = {
@@ -102,7 +102,7 @@ class IncidenciaService {
     required Incidencia incidencia,
     required String token,
   }) async {
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
     final uri = Uri.parse('$BASE_URL?Code=403');
 
     final body = {
@@ -138,7 +138,7 @@ class IncidenciaService {
     required String cifEmpresa,
     required String token,
   }) async {
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
     final uri = Uri.parse('$BASE_URL?Code=402');
     final body = {
       'Token': token,

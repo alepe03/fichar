@@ -44,7 +44,7 @@ class _VCifScreenState extends State<VCifScreen> {
 
   Future<bool> validarCifEnServidor(String cif) async {
     try {
-      const token = '123456.abcd';
+      final token = DatabaseConfig.apiToken;
       final url = Uri.parse('$BASE_URL?Code=700&cif_empresa=$cif&Token=$token');
       final response = await http.get(url);
       if (response.statusCode == 200 && response.body.contains('OK')) {
@@ -99,7 +99,7 @@ class _VCifScreenState extends State<VCifScreen> {
     await _guardarListaCifs();
 
     try {
-      const token = '123456.abcd';
+      final token = DatabaseConfig.apiToken;
       await Future.wait([
         EmpleadoService.descargarYGuardarEmpleados(nuevoCif, token, BASE_URL),
         SucursalService.descargarYGuardarSucursales(nuevoCif, token, BASE_URL),

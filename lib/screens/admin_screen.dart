@@ -60,6 +60,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
+          isScrollable: false,
+          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          unselectedLabelStyle: const TextStyle(fontSize: 12),
           tabs: const [
             Tab(text: 'Usuarios'),
             Tab(text: 'Fichajes'),
@@ -215,7 +218,9 @@ class _UsuariosTabState extends State<UsuariosTab> {
   void _abrirDialogo(BuildContext context, AdminProvider provider, {Empleado? empleado}) {
     showDialog(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
       builder: (_) => Dialog(
+        backgroundColor: const Color(0xFFEAEAEA),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -288,7 +293,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
                   avatar: const Icon(Icons.people_alt, size: 18, color: Colors.white),
                   label: Text(
                     'Activos $activosQueCuentan/$maxUsuariosActivos',
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                   backgroundColor: kPrimaryBlue,
                 ),
@@ -303,18 +308,36 @@ class _UsuariosTabState extends State<UsuariosTab> {
                     label: const Text('Todos'),
                     selected: filtro == FiltroEstado.todos,
                     onSelected: (_) => setState(() => filtro = FiltroEstado.todos),
+                    backgroundColor: const Color(0xFFEAEAEA),
+                    selectedColor: Colors.blue,
+                    labelStyle: TextStyle(
+                      color: filtro == FiltroEstado.todos ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
                     label: const Text('Activos'),
                     selected: filtro == FiltroEstado.activos,
                     onSelected: (_) => setState(() => filtro = FiltroEstado.activos),
+                    backgroundColor: const Color(0xFFEAEAEA),
+                    selectedColor: Colors.blue,
+                    labelStyle: TextStyle(
+                      color: filtro == FiltroEstado.activos ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
                     label: const Text('Inactivos'),
                     selected: filtro == FiltroEstado.inactivos,
                     onSelected: (_) => setState(() => filtro = FiltroEstado.inactivos),
+                    backgroundColor: const Color(0xFFEAEAEA),
+                    selectedColor: Colors.blue,
+                    labelStyle: TextStyle(
+                      color: filtro == FiltroEstado.inactivos ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -336,6 +359,7 @@ class _UsuariosTabState extends State<UsuariosTab> {
                         final emp = empleadosFiltrados[index];
 
                         return Card(
+                          color: const Color(0xFFEAEAEA),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 3,
                           child: ListTile(
@@ -350,21 +374,40 @@ class _UsuariosTabState extends State<UsuariosTab> {
                               children: [
                                 IconButton(
                                   icon: Icon(
-                                    emp.activo == 1 ? Icons.block : Icons.check_circle,
-                                    color: emp.activo == 1 ? Colors.orange : Colors.green,
+                                    emp.activo == 1 ? Icons.check_circle : Icons.block,
+                                    color: emp.activo == 1 ? Colors.green : Colors.red,
                                   ),
                                   tooltip: emp.activo == 1 ? 'Dar de baja' : 'Reactivar usuario',
                                   onPressed: () async {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
-                                        title: Text(emp.activo == 1 ? 'Confirmar baja' : 'Confirmar reactivación'),
-                                        content: Text(emp.activo == 1
-                                            ? '¿Quieres dar de baja al usuario "${emp.usuario}"?'
-                                            : '¿Quieres reactivar al usuario "${emp.usuario}"?'),
+                                        backgroundColor: const Color(0xFFEAEAEA),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        title: Text(
+                                          emp.activo == 1 ? 'Confirmar baja' : 'Confirmar reactivación',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                                        ),
+                                        content: Text(
+                                          emp.activo == 1
+                                              ? '¿Quieres dar de baja al usuario "${emp.usuario}"?'
+                                              : '¿Quieres reactivar al usuario "${emp.usuario}"?',
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                        actionsAlignment: MainAxisAlignment.spaceBetween,
                                         actions: [
-                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.blue,
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                            ),
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: const Text('Confirmar'),
+                                          ),
                                         ],
                                       ),
                                     );
@@ -546,116 +589,119 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
     final bool sinPlazasAlActivar =
         hayMax && rolCuenta && (_activo == false) && (widget.activosQueCuentan >= widget.maxUsuariosActivos!);
 
-    return SingleChildScrollView(
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _isEditing ? 'Editar empleado' : 'Nuevo empleado',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            // Usuario
-            TextFormField(
-              controller: _usuarioCtrl,
-              decoration: InputDecoration(
-                labelText: 'Usuario',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person, color: kPrimaryBlue),
+    return Container(
+      color: const Color(0xFFEAEAEA),
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isEditing ? 'Editar empleado' : 'Nuevo empleado',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
-            ),
-            const SizedBox(height: 12),
-            // Nombre
-            TextFormField(
-              controller: _nombreCtrl,
-              decoration: InputDecoration(
-                labelText: 'Nombre',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.badge, color: kPrimaryBlue),
+              const SizedBox(height: 16),
+              // Usuario
+              TextFormField(
+                controller: _usuarioCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Usuario',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person, color: kPrimaryBlue),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'Usuario obligatorio' : null,
               ),
-              validator: (v) => v == null || v.isEmpty ? 'Nombre obligatorio' : null,
-            ),
-            const SizedBox(height: 12),
-            // Email
-            TextFormField(
-              controller: _emailCtrl,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email, color: kPrimaryBlue),
+              const SizedBox(height: 12),
+              // Nombre
+              TextFormField(
+                controller: _nombreCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Nombre',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.badge, color: kPrimaryBlue),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'Nombre obligatorio' : null,
               ),
-              keyboardType: TextInputType.emailAddress,
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) {
-                  return 'Email obligatorio';
-                }
-                final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                if (!emailRegex.hasMatch(v.trim())) {
-                  return 'Introduce un email válido';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+              // Email
+              TextFormField(
+                controller: _emailCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.email, color: kPrimaryBlue),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Email obligatorio';
+                  }
+                  final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                  if (!emailRegex.hasMatch(v.trim())) {
+                    return 'Introduce un email válido';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
 
-            // Dirección
-            TextFormField(
-              controller: _direccionCtrl,
-              decoration: InputDecoration(
-                labelText: 'Dirección',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.home, color: kPrimaryBlue),
+              // Dirección
+              TextFormField(
+                controller: _direccionCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Dirección',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.home, color: kPrimaryBlue),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            // Población
-            TextFormField(
-              controller: _poblacionCtrl,
-              decoration: InputDecoration(
-                labelText: 'Población',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_city, color: kPrimaryBlue),
+              const SizedBox(height: 12),
+              // Población
+              TextFormField(
+                controller: _poblacionCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Población',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.location_city, color: kPrimaryBlue),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            // Código Postal
-            TextFormField(
-              controller: _codigoPostalCtrl,
-              decoration: InputDecoration(
-                labelText: 'Código Postal',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.local_post_office, color: kPrimaryBlue),
+              const SizedBox(height: 12),
+              // Código Postal
+              TextFormField(
+                controller: _codigoPostalCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Código Postal',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.local_post_office, color: kPrimaryBlue),
+                ),
+                keyboardType: TextInputType.number,
               ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            // Teléfono
-            TextFormField(
-              controller: _telefonoCtrl,
-              decoration: InputDecoration(
-                labelText: 'Teléfono',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone, color: kPrimaryBlue),
+              const SizedBox(height: 12),
+              // Teléfono
+              TextFormField(
+                controller: _telefonoCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Teléfono',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone, color: kPrimaryBlue),
+                ),
+                keyboardType: TextInputType.phone,
               ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 12),
-            // DNI
-            TextFormField(
-              controller: _dniCtrl,
-              decoration: InputDecoration(
-                labelText: 'DNI',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.credit_card, color: kPrimaryBlue),
+              const SizedBox(height: 12),
+              // DNI
+              TextFormField(
+                controller: _dniCtrl,
+                decoration: InputDecoration(
+                  labelText: 'DNI',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.credit_card, color: kPrimaryBlue),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'DNI obligatorio' : null,
               ),
-              validator: (v) => v == null || v.isEmpty ? 'DNI obligatorio' : null,
-            ),
-            const SizedBox(height: 12),
-            // Contraseña
-            TextFormField(
+              const SizedBox(height: 12),
+              // Contraseña
+              TextFormField(
               controller: _passwordCtrl,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
@@ -671,21 +717,21 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                 return null;
               },
             ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // Rol (bloqueado si edita un admin; si no, limitado a los 3 permitidos)
-            if (_editaUnAdmin)
-              TextFormField(
-                enabled: false,
-                initialValue: _rolLabel('admin'),
-                decoration: const InputDecoration(
-                  labelText: 'Rol',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
-                ),
-              )
-            else
-              DropdownButtonFormField<String>(
+              // Rol (bloqueado si edita un admin; si no, limitado a los 3 permitidos)
+              if (_editaUnAdmin)
+                TextFormField(
+                  enabled: false,
+                  initialValue: _rolLabel('admin'),
+                  decoration: const InputDecoration(
+                    labelText: 'Rol',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.security, color: kPrimaryBlue),
+                  ),
+                )
+              else
+                              DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
                   labelText: 'Rol',
                   border: OutlineInputBorder(),
@@ -696,7 +742,17 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                     .map(
                       (r) => DropdownMenuItem(
                         value: r,
-                        child: Text(_rolLabel(r)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            _rolLabel(r),
+                            style: TextStyle(
+                              color: Colors.grey.shade800,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
                     )
                     .toList(),
@@ -731,92 +787,99 @@ class _FormularioEmpleadoState extends State<_FormularioEmpleado> {
                   });
                 },
                 validator: (v) => v == null ? 'Selecciona un rol' : null,
+                dropdownColor: Colors.white,
+                elevation: 8,
+                borderRadius: BorderRadius.circular(8),
+                menuMaxHeight: 200,
               ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // Switches
-            SwitchListTile(
-              title: const Text('Permitir localización'),
-              value: _puedeLocalizar,
-              onChanged: (_rolSeleccionado != 'supervisor')
-                  ? (value) {
-                      setState(() {
-                        _puedeLocalizar = value;
-                      });
-                    }
-                  : null,
-            ),
+              // Switches
+              SwitchListTile(
+                title: const Text('Permitir localización'),
+                value: _puedeLocalizar,
+                activeColor: Colors.blue,
+                onChanged: (_rolSeleccionado != 'supervisor')
+                    ? (value) {
+                        setState(() {
+                          _puedeLocalizar = value;
+                        });
+                      }
+                    : null,
+              ),
 
-            // Empleado activo (con control de plazas locales)
-            SwitchListTile(
-              title: const Text('Empleado activo'),
-              value: _activo,
-              subtitle: sinPlazasAlActivar
-                  ? const Text('Sin plazas activas disponibles en el plan', style: TextStyle(color: Colors.redAccent))
-                  : null,
-              onChanged: (value) {
-                // Si queremos activar (value==true) y no hay plazas, lo bloqueamos.
-                if (value && sinPlazasAlActivar) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('No quedan plazas activas en el plan de la empresa.'),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                  return;
-                }
-                setState(() {
-                  _activo = value;
-                });
-              },
-            ),
-
-            const SizedBox(height: 24),
-            // Botón Guardar
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    final rolParaGuardar = _editaUnAdmin ? 'admin' : _rolSeleccionado;
-
-                    // Defensa adicional en cliente
-                    if (!_editaUnAdmin && !_rolesPermitidosAdmin.contains(rolParaGuardar)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Rol no permitido. Solo Empleado, Supervisor o Terminal de fichaje.'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                      return;
-                    }
-
-                    widget.onSubmit(
-                      Empleado(
-                        usuario: _usuarioCtrl.text.trim(),
-                        cifEmpresa: widget.cifEmpresa,
-                        direccion: _direccionCtrl.text.trim(),
-                        poblacion: _poblacionCtrl.text.trim(),
-                        codigoPostal: _codigoPostalCtrl.text.trim(),
-                        telefono: _telefonoCtrl.text.trim(),
-                        email: _emailCtrl.text.trim(),
-                        nombre: _nombreCtrl.text.trim(),
-                        dni: _dniCtrl.text.trim(),
-                        rol: rolParaGuardar,
-                        passwordHash: _isEditing ? '' : _passwordCtrl.text.trim(),
-                        puedeLocalizar: _puedeLocalizar ? 1 : 0,
-                        activo: _activo ? 1 : 0,
+              // Empleado activo (con control de plazas locales)
+              SwitchListTile(
+                title: const Text('Empleado activo'),
+                value: _activo,
+                activeColor: Colors.blue,
+                subtitle: sinPlazasAlActivar
+                    ? const Text('Sin plazas activas disponibles en el plan', style: TextStyle(color: Colors.redAccent))
+                    : null,
+                onChanged: (value) {
+                  // Si queremos activar (value==true) y no hay plazas, lo bloqueamos.
+                  if (value && sinPlazasAlActivar) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No quedan plazas activas en el plan de la empresa.'),
+                        backgroundColor: Colors.redAccent,
                       ),
-                      _usuarioOriginal,
                     );
+                    return;
                   }
+                  setState(() {
+                    _activo = value;
+                  });
                 },
-                child: Text(_isEditing ? 'Guardar cambios' : 'Guardar'),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 24),
+              // Botón Guardar
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      final rolParaGuardar = _editaUnAdmin ? 'admin' : _rolSeleccionado;
+
+                      // Defensa adicional en cliente
+                      if (!_editaUnAdmin && !_rolesPermitidosAdmin.contains(rolParaGuardar)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Rol no permitido. Solo Empleado, Supervisor o Terminal de fichaje.'),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                        return;
+                      }
+
+                      widget.onSubmit(
+                        Empleado(
+                          usuario: _usuarioCtrl.text.trim(),
+                          cifEmpresa: widget.cifEmpresa,
+                          direccion: _direccionCtrl.text.trim(),
+                          poblacion: _poblacionCtrl.text.trim(),
+                          codigoPostal: _codigoPostalCtrl.text.trim(),
+                          telefono: _telefonoCtrl.text.trim(),
+                          email: _emailCtrl.text.trim(),
+                          nombre: _nombreCtrl.text.trim(),
+                          dni: _dniCtrl.text.trim(),
+                          rol: rolParaGuardar,
+                          passwordHash: _isEditing ? '' : _passwordCtrl.text.trim(),
+                          puedeLocalizar: _puedeLocalizar ? 1 : 0,
+                          activo: _activo ? 1 : 0,
+                        ),
+                        _usuarioOriginal,
+                      );
+                    }
+                  },
+                  child: Text(_isEditing ? 'Guardar cambios' : 'Guardar'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -848,27 +911,73 @@ class _FichajesTabState extends State<FichajesTab> {
 
   // ------------------ UI helpers ------------------
   List<DropdownMenuItem<int>> _buildYears() {
-    final now = DateTime.now();
-    final years = List.generate(6, (i) => now.year - i);
-    return years.map((y) => DropdownMenuItem<int>(value: y, child: Text('$y'))).toList();
+    // Años fijos desde 2024 hasta 2028
+    final years = [2024, 2025, 2026, 2027, 2028];
+    return years.map((y) => DropdownMenuItem<int>(
+      value: y, 
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          '$y',
+          style: TextStyle(
+            color: Colors.grey.shade800,
+            fontWeight: FontWeight.w500,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    )).toList();
   }
 
   List<DropdownMenuItem<int>> _buildMonths() {
     return List.generate(12, (i) => i + 1)
-        .map((m) => DropdownMenuItem<int>(value: m, child: Text(m.toString().padLeft(2, '0'))))
+        .map((m) => DropdownMenuItem<int>(
+          value: m, 
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              m.toString().padLeft(2, '0'),
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ))
         .toList();
   }
 
   List<DropdownMenuItem<String?>> _buildUsuarios(List<Empleado> empleados) {
     return [
-      const DropdownMenuItem<String?>(
+      DropdownMenuItem<String?>(
         value: null,
-        child: Text('Todos los empleados'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            'Todos los empleados',
+            style: TextStyle(
+              color: Colors.grey.shade800,
+              fontWeight: FontWeight.w500,
+              fontSize: 13,
+            ),
+          ),
+        ),
       ),
       ...empleados.map(
         (e) => DropdownMenuItem<String?>(
           value: e.usuario,
-          child: Text(e.nombre ?? e.usuario),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              e.nombre ?? e.usuario,
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ),
       ),
     ];
@@ -1563,50 +1672,140 @@ class _FichajesTabState extends State<FichajesTab> {
           children: [
             Padding(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: DropdownButton<int>(
-                          value: _selectedYear,
-                          items: _buildYears(),
-                          onChanged: (v) => setState(() => _selectedYear = v!),
+                      // Filtro de Año - Compacto
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_today, size: 16, color: Colors.blue.shade600),
+                            const SizedBox(width: 6),
+                            DropdownButton<int>(
+                              value: _selectedYear,
+                              items: _buildYears(),
+                              onChanged: (v) => setState(() => _selectedYear = v!),
+                              underline: const SizedBox(),
+                              icon: Icon(Icons.keyboard_arrow_down, color: Colors.blue.shade600, size: 18),
+                              style: TextStyle(
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              dropdownColor: Colors.white,
+                              elevation: 8,
+                              borderRadius: BorderRadius.circular(8),
+                              menuMaxHeight: 200,
+                            ),
+                          ],
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: DropdownButton<int>(
-                          value: _selectedMonth,
-                          items: _buildMonths(),
-                          onChanged: (v) =>
-                              setState(() => _selectedMonth = v!),
+                      const SizedBox(width: 10),
+                      
+                      // Filtro de Mes - Compacto
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.date_range, size: 16, color: Colors.blue.shade600),
+                            const SizedBox(width: 6),
+                            DropdownButton<int>(
+                              value: _selectedMonth,
+                              items: _buildMonths(),
+                              onChanged: (v) => setState(() => _selectedMonth = v!),
+                              underline: const SizedBox(),
+                              icon: Icon(Icons.keyboard_arrow_down, color: Colors.blue.shade600, size: 18),
+                              style: TextStyle(
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              dropdownColor: Colors.white,
+                              elevation: 8,
+                              borderRadius: BorderRadius.circular(8),
+                              menuMaxHeight: 200,
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      
+                      // Filtro de Empleado - Compacto
                       Expanded(
                         child: Container(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade400),
-                            borderRadius: BorderRadius.circular(6),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
                           ),
-                          child: DropdownButton<String?>(
-                            isExpanded: true,
-                            underline: const SizedBox(),
-                            value: _selectedUsuario,
-                            items: _buildUsuarios(provider.empleados),
-                            onChanged: (v) =>
-                                setState(() => _selectedUsuario = v),
+                          child: Row(
+                            children: [
+                              Icon(Icons.person_outline, size: 16, color: Colors.blue.shade600),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: DropdownButton<String?>(
+                                  isExpanded: true,
+                                  underline: const SizedBox(),
+                                  value: _selectedUsuario,
+                                  items: _buildUsuarios(provider.empleados),
+                                  onChanged: (v) => setState(() => _selectedUsuario = v),
+                                  icon: Icon(Icons.keyboard_arrow_down, color: Colors.blue.shade600, size: 18),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade800,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                  dropdownColor: Colors.white,
+                                  elevation: 8,
+                                  borderRadius: BorderRadius.circular(8),
+                                  menuMaxHeight: 200,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 1),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -1618,7 +1817,7 @@ class _FichajesTabState extends State<FichajesTab> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF2196F3),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 12),
+                              horizontal: 20, vertical: 6),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
                         ),
@@ -1851,6 +2050,7 @@ class _SessionCompactCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
       elevation: 2,
+      color: const Color(0xFFEAEAEA),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -2005,7 +2205,9 @@ class IncidenciasTab extends StatelessWidget {
   void _abrirDialogo(BuildContext context, AdminProvider provider, {Incidencia? incidencia}) {
     showDialog(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
       builder: (_) => Dialog(
+        backgroundColor: const Color(0xFFEAEAEA),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -2045,7 +2247,7 @@ class IncidenciasTab extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 0),
+            padding: const EdgeInsets.only(bottom: 16),
             child: FloatingActionButton.extended(
               icon: const Icon(Icons.add_alert, color: Colors.white),
               label: const Text(
@@ -2065,45 +2267,132 @@ class IncidenciasTab extends StatelessWidget {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  separatorBuilder: (_, __) => const Divider(height: 16, thickness: 1),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemCount: provider.incidencias.length,
                   itemBuilder: (context, index) {
                     final inc = provider.incidencias[index];
                     return Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.symmetric(vertical: 4),
                       elevation: 3,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        title: Text('${inc.codigo} - ${inc.descripcion ?? ''}'
-                            ' — ${inc.computa ? "Computa horas" : "No computa"}',
-                            style: const TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                          tooltip: 'Eliminar incidencia',
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Confirmar borrado'),
-                                content: Text('¿Quieres eliminar la incidencia código "${inc.codigo}"?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+                      color: const Color(0xFFEAEAEA),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _abrirDialogo(context, provider, incidencia: inc),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header con código y estado
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: kPrimaryBlue,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      inc.codigo,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: inc.computa ? Colors.green.shade100 : Colors.orange.shade100,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: inc.computa ? Colors.green.shade300 : Colors.orange.shade300,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      inc.computa ? 'Computa horas' : 'No computa',
+                                      style: TextStyle(
+                                        color: inc.computa ? Colors.green.shade800 : Colors.orange.shade800,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 20),
+                                    tooltip: 'Eliminar incidencia',
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          backgroundColor: const Color(0xFFEAEAEA),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                          title: const Text(
+                                            'Confirmar borrado',
+                                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                                          ),
+                                          content: Text(
+                                            '¿Quieres eliminar la incidencia código "${inc.codigo}"?',
+                                            style: const TextStyle(fontSize: 16),
+                                          ),
+                                          actionsAlignment: MainAxisAlignment.spaceBetween,
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(ctx, false),
+                                              child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.redAccent,
+                                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                              ),
+                                              onPressed: () => Navigator.pop(ctx, true),
+                                              child: const Text('Eliminar'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm == true) {
+                                        final error = await provider.deleteIncidencia(inc.codigo);
+                                        if (error != null && context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
                                 ],
                               ),
-                            );
-                            if (confirm == true) {
-                              final error = await provider.deleteIncidencia(inc.codigo);
-                              if (error != null && context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
-                                );
-                              }
-                            }
-                          },
+                              const SizedBox(height: 12),
+                              // Descripción
+                              if (inc.descripcion != null && inc.descripcion!.isNotEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: Text(
+                                    inc.descripcion!,
+                                    style: TextStyle(
+                                      color: Colors.grey.shade800,
+                                      fontSize: 13,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                        onTap: () => _abrirDialogo(context, provider, incidencia: inc),
                       ),
                     );
                   },
@@ -2148,69 +2437,87 @@ class _FormularioIncidenciaState extends State<_FormularioIncidencia> {
   Widget build(BuildContext context) {
     final isEditing = widget.incidenciaExistente != null;
     final theme = Theme.of(context);
-    return SingleChildScrollView(
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isEditing ? 'Editar incidencia' : 'Nueva incidencia',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _codigoCtrl,
-              decoration: InputDecoration(
-                labelText: 'Código',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.code, color: kPrimaryBlue),
+    return Container(
+      color: const Color(0xFFEAEAEA),
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isEditing ? 'Editar incidencia' : 'Nueva incidencia',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              validator: (v) => v == null || v.isEmpty ? 'Código obligatorio' : null,
-              enabled: !isEditing,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descripcionCtrl,
-              decoration: InputDecoration(
-                labelText: 'Descripción',
-                border: const OutlineInputBorder(),
-                prefixIcon: Icon(Icons.description, color: kPrimaryBlue),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _codigoCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Código',
+                  border: const OutlineInputBorder(),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: kPrimaryBlue, width: 2),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.grey.shade400),
+                  ),
+                  prefixIcon: Icon(Icons.code, color: kPrimaryBlue),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'Código obligatorio' : null,
+                enabled: !isEditing,
               ),
-              validator: (v) => v == null || v.isEmpty ? 'Descripción obligatoria' : null,
-            ),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              title: const Text('¿Computa horas?'),
-              value: _computaHoras,
-              onChanged: (bool? value) {
-                setState(() {
-                  _computaHoras = value ?? true;
-                });
-              },
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    widget.onSubmit(
-                      Incidencia(
-                        codigo: _codigoCtrl.text.trim(),
-                        descripcion: _descripcionCtrl.text.trim(),
-                        cifEmpresa: widget.cifEmpresa,
-                        computa: _computaHoras,
-                      ),
-                    );
-                  }
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _descripcionCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Descripción',
+                  border: const OutlineInputBorder(),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: kPrimaryBlue, width: 2),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.grey.shade400),
+                  ),
+                  prefixIcon: Icon(Icons.description, color: kPrimaryBlue),
+                ),
+                validator: (v) => v == null || v.isEmpty ? 'Descripción obligatoria' : null,
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                title: const Text('¿Computa horas?'),
+                value: _computaHoras,
+                onChanged: (bool? value) {
+                  setState(() {
+                    _computaHoras = value ?? true;
+                  });
                 },
-                child: Text(isEditing ? 'Guardar cambios' : 'Guardar'),
+                controlAffinity: ListTileControlAffinity.leading,
+                activeColor: Colors.blue,
+                checkColor: Colors.white,
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBlue),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      widget.onSubmit(
+                        Incidencia(
+                          codigo: _codigoCtrl.text.trim(),
+                          descripcion: _descripcionCtrl.text.trim(),
+                          cifEmpresa: widget.cifEmpresa,
+                          computa: _computaHoras,
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(isEditing ? 'Guardar cambios' : 'Guardar'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2364,15 +2671,22 @@ class _HorariosTabState extends State<HorariosTab> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(16),
+              color: const Color(0xFFEAEAEA), borderRadius: BorderRadius.circular(16),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3)),
-                SizedBox(width: 12),
-                Text('Guardando…', style: TextStyle(fontWeight: FontWeight.w600)),
+                SizedBox(
+                  width: 26, 
+                  height: 26, 
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text('Guardando…', style: TextStyle(fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -2400,30 +2714,90 @@ class _HorariosTabState extends State<HorariosTab> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: DropdownButton<String?>(
-                isExpanded: true,
-                hint: const Text('Filtrar por empleado'),
-                value: _dniEmpleadoSeleccionado,
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Todos los empleados'),
-                  ),
-                  ...provider.empleados.where((e) => e.dni != null).map(
-                        (e) => DropdownMenuItem<String?>(
-                          value: e.dni!,
-                          child: Text(e.nombre ?? e.usuario),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 16, color: Colors.blue.shade600),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        hint: Text(
+                          'Filtrar por empleado',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
+                        value: _dniEmpleadoSeleccionado,
+                        icon: Icon(Icons.keyboard_arrow_down, color: Colors.blue.shade600, size: 18),
+                        style: TextStyle(
+                          color: Colors.grey.shade800,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                        dropdownColor: Colors.white,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(8),
+                        menuMaxHeight: 200,
+                        items: [
+                          DropdownMenuItem<String?>(
+                            value: null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                'Todos los empleados',
+                                style: TextStyle(
+                                  color: Colors.grey.shade800,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                          ...provider.empleados.where((e) => e.dni != null).map(
+                                (e) => DropdownMenuItem<String?>(
+                                  value: e.dni!,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Text(
+                                      e.nombre ?? e.usuario,
+                                      style: TextStyle(
+                                        color: Colors.grey.shade800,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                        ],
+                        onChanged: (val) async {
+                          setState(() => _dniEmpleadoSeleccionado = val);
+                          if (val != null) {
+                            await provider.cargarHorariosEmpleado(val);
+                          } else {
+                            await provider.cargarHorariosEmpresa(provider.cifEmpresa);
+                          }
+                        },
                       ),
-                ],
-                onChanged: (val) async {
-                  setState(() => _dniEmpleadoSeleccionado = val);
-                  if (val != null) {
-                    await provider.cargarHorariosEmpleado(val);
-                  } else {
-                    await provider.cargarHorariosEmpresa(provider.cifEmpresa);
-                  }
-                },
+                    ),
+                  ],
+                ),
               ),
             ),
             Expanded(
@@ -2462,10 +2836,9 @@ class _HorariosTabState extends State<HorariosTab> {
                         }();
 
                         return Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          color: const Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 3,
-                          color: const Color(0xFFF7F0FA),
                           child: ListTile(
                             // Título compacto: solo horas
                             title: Text(
@@ -2516,16 +2889,27 @@ class _HorariosTabState extends State<HorariosTab> {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
-                                        title: const Text('Confirmar borrado'),
+                                        backgroundColor: const Color(0xFFEAEAEA),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        title: const Text(
+                                          'Confirmar borrado',
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                                        ),
                                         content: Text(
                                           '¿Eliminar horario del día ${_diasSemana[h.diaSemana]} para ${h.dniEmpleado}?',
+                                          style: const TextStyle(fontSize: 16),
                                         ),
+                                        actionsAlignment: MainAxisAlignment.spaceBetween,
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(ctx, false),
-                                            child: const Text('Cancelar'),
+                                            child: const Text('Cancelar', style: TextStyle(color: Colors.blue)),
                                           ),
                                           ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.red,
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                            ),
                                             onPressed: () => Navigator.pop(ctx, true),
                                             child: const Text('Eliminar'),
                                           ),
@@ -2595,7 +2979,7 @@ void _showProgressDialog({
           width: 380,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFFEAEAEA),
             borderRadius: BorderRadius.circular(16),
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 16)],
           ),
@@ -2621,7 +3005,11 @@ void _showProgressDialog({
                     Text(subtitle, style: TextStyle(color: Colors.grey[700])),
                   ],
                   const SizedBox(height: 14),
-                  LinearProgressIndicator(value: value == 0 ? 1e-9 : value),
+                  LinearProgressIndicator(
+                    value: value == 0 ? 1e-9 : value,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                    backgroundColor: Colors.grey.shade300,
+                  ),
                   const SizedBox(height: 10),
                   Text(total == 0
                       ? 'Preparando…'
@@ -3161,12 +3549,29 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
 
   @override
   Widget build(BuildContext context) {
+    // Solución más robusta para evitar overflow en web
     final screenWidth = MediaQuery.of(context).size.width;
-    final wheelDiameter = (screenWidth - 80) / 2;
-    const TextStyle textStyle = TextStyle(fontSize: 32);
+    final screenHeight = MediaQuery.of(context).size.height;
+    
+    // Tamaño máximo garantizado que no cause overflow
+    final maxWidth = screenWidth * 0.9; // 90% del ancho de pantalla
+    final maxHeight = screenHeight * 0.7; // 70% del alto de pantalla
+    
+    // Calcular diámetro basado en el espacio disponible
+    final wheelDiameter = (maxWidth < 400) 
+        ? 80.0  // Tamaño mínimo
+        : (maxWidth < 600) 
+            ? 100.0  // Tamaño pequeño
+            : 120.0; // Tamaño estándar
+    
+    const TextStyle textStyle = TextStyle(fontSize: 24);
 
     return Container(
-      padding: const EdgeInsets.only(top: 24, bottom: 12, left: 12, right: 12),
+      constraints: BoxConstraints(
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+      ),
+      padding: const EdgeInsets.only(top: 20, bottom: 12, left: 12, right: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -3181,8 +3586,8 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text('Selecciona la hora',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          const SizedBox(height: 20),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -3191,7 +3596,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
                 height: wheelDiameter,
                 child: ListWheelScrollView.useDelegate(
                   controller: _hourController,
-                  itemExtent: 50,
+                  itemExtent: 40,
                   physics: const FixedExtentScrollPhysics(),
                   onSelectedItemChanged: (index) {
                     setState(() => _selectedHour = index);
@@ -3204,7 +3609,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
                         child: Text(
                           index.toString().padLeft(2, '0'),
                           style: selected
-                              ? textStyle.copyWith(color: Colors.black)
+                              ? textStyle.copyWith(color: Colors.black, fontWeight: FontWeight.bold)
                               : textStyle.copyWith(color: Colors.grey),
                         ),
                       );
@@ -3213,15 +3618,15 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              const Text(':', style: TextStyle(fontSize: 32)),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              const Text(':', style: TextStyle(fontSize: 24)),
+              const SizedBox(width: 4),
               SizedBox(
                 width: wheelDiameter,
                 height: wheelDiameter,
                 child: ListWheelScrollView.useDelegate(
                   controller: _minuteController,
-                  itemExtent: 50,
+                  itemExtent: 40,
                   physics: const FixedExtentScrollPhysics(),
                   onSelectedItemChanged: (index) {
                     setState(() => _selectedMinute = index);
@@ -3234,7 +3639,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
                         child: Text(
                           index.toString().padLeft(2, '0'),
                           style: selected
-                              ? textStyle.copyWith(color: Colors.black)
+                              ? textStyle.copyWith(color: Colors.black, fontWeight: FontWeight.bold)
                               : textStyle.copyWith(color: Colors.grey),
                         ),
                       );
@@ -3245,7 +3650,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -3263,7 +3668,7 @@ class _TimePickerWheelState extends State<_TimePickerWheel> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
         ],
       ),
     );

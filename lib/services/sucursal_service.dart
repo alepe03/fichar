@@ -3,6 +3,7 @@ import '../models/sucursal.dart';
 import '../db/database_helper.dart';                
 import 'package:sqflite/sqflite.dart';            
 import 'package:flutter/foundation.dart'; // Para compute
+import '../config.dart'; // Para DatabaseConfig
 
 // Servicio para descargar y guardar sucursales
 class SucursalService {
@@ -30,7 +31,7 @@ class SucursalService {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
 
-    const nombreBD = 'qame400'; // Nombre de la base de datos en el backend
+    final nombreBD = DatabaseConfig.databaseName; // Nombre de la base de datos en el backend
 
     final url = Uri.parse('$baseUrl?Token=$token&Bd=$nombreBD&Code=600&cif_empresa=$cifEmpresa');
     print('Descargando sucursales desde: $url');

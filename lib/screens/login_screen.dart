@@ -115,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // 1. Sincronizar empleados antes del login local para datos frescos
     try {
       await EmpleadoService.sincronizarEmpleadosCompleto(
-        prefs.getString('token') ?? '123456.abcd',
+        prefs.getString('token') ?? DatabaseConfig.apiToken,
         prefs.getString('baseUrl') ?? BASE_URL,
         cifSeleccionado!,
       );
@@ -183,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('nombre_empleado', usuarioFinal.nombre ?? '');
     await prefs.setString('dni_empleado', usuarioFinal.dni ?? '');
     await prefs.setString('id_sucursal', '');
-    await prefs.setString('token', '123456.abcd'); // Ajusta según tu gestión real de tokens
+          await prefs.setString('token', DatabaseConfig.apiToken); // Ajusta según tu gestión real de tokens
     await prefs.setString('baseUrl', BASE_URL);
     await prefs.setInt('puede_localizar', usuarioFinal.puedeLocalizar);
     await prefs.setString('rol', usuarioFinal.rol ?? '');

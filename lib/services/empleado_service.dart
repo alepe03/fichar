@@ -40,7 +40,7 @@ class EmpleadoService {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
 
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
 
     final url = Uri.parse(
       '$baseUrl?Token=$token&Bd=$nombreBD&Code=200&cif_empresa=$cifEmpresa',
@@ -85,7 +85,7 @@ class EmpleadoService {
       throw ArgumentError("El parámetro baseUrl es inválido: '$baseUrl'");
     }
 
-    const nombreBD = 'qame400';
+    final nombreBD = DatabaseConfig.databaseName;
 
     final url = Uri.parse(
       '$baseUrl?Token=$token&Bd=$nombreBD&Code=200&cif_empresa=$cifEmpresa',
