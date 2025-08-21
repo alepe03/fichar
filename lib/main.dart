@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 // Importa el DatabaseHelper para acceder a historicosPendientes()
 import 'db/database_helper.dart';
 // Servicio de sincronización
-import 'services/historico_service.dart';
+import 'services/historico_service.dart'; 
 
 // Setter global de sqflite:
 import 'package:sqflite/sqflite.dart' show databaseFactory;

@@ -354,16 +354,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                                 final salidaStr =
                                     _formatFecha(s.salida?.fechaSalida);
 
-                                final eLat = s.entrada?.latitud,
-                                    eLon = s.entrada?.longitud;
-                                final entradaCoords =
-                                    (eLat != null && eLon != null) ? '$eLat, $eLon' : '-';
-
-                                final sLat = s.salida?.latitud,
-                                    sLon = s.salida?.longitud;
-                                final salidaCoords =
-                                    (sLat != null && sLon != null) ? '$sLat, $sLon' : '-';
-
                                 int minTrab = 0;
                                 if (dtE != null && dtS != null) {
                                   minTrab = _diffMinutos(dtE, dtS);
@@ -399,8 +389,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                                   dni: dni,
                                   entrada: entradaStr,
                                   salida: salidaStr,
-                                  coordsEntrada: entradaCoords,
-                                  coordsSalida: salidaCoords,
                                   tiempo: tiempoStr,
                                   ordinarias: ordStr,
                                   incidencias: incidenciasText,
@@ -441,8 +429,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
       'DNI',
       'Entrada',
       'Salida',
-      'Coordenadas Entrada',
-      'Coordenadas Salida',
       'Tiempo',
       'Incidencias',
     ];
@@ -483,16 +469,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
 
         final entradaStr = _formatFecha(sesion.entrada?.fechaEntrada);
         final salidaStr = _formatFecha(sesion.salida?.fechaSalida);
-
-        final entradaCoords = (sesion.entrada?.latitud != null &&
-                sesion.entrada?.longitud != null)
-            ? '${sesion.entrada!.latitud}, ${sesion.entrada!.longitud}'
-            : '-';
-
-        final salidaCoords = (sesion.salida?.latitud != null &&
-                sesion.salida?.longitud != null)
-            ? '${sesion.salida!.latitud}, ${sesion.salida!.longitud}'
-            : '-';
 
         // Tiempo trabajado (min)
         int minutosTrabajados = 0;
@@ -552,18 +528,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Align(
-                    alignment: pw.Alignment.centerLeft,
-                    child: pw.Text(entradaCoords)),
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
-                child: pw.Align(
-                    alignment: pw.Alignment.centerLeft,
-                    child: pw.Text(salidaCoords)),
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
-                child: pw.Align(
                     alignment: pw.Alignment.center,
                     child: pw.Text(tiempoTrabajadoStr)),
               ),
@@ -618,10 +582,8 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
               1: pw.FlexColumnWidth(0.9), // DNI
               2: pw.FlexColumnWidth(1.0), // Entrada
               3: pw.FlexColumnWidth(1.0), // Salida
-              4: pw.FlexColumnWidth(1.2), // Coords E
-              5: pw.FlexColumnWidth(1.2), // Coords S
-              6: pw.FlexColumnWidth(0.8), // Tiempo
-              7: pw.FlexColumnWidth(1.4), // Incidencias
+              4: pw.FlexColumnWidth(0.8), // Tiempo
+              5: pw.FlexColumnWidth(1.4), // Incidencias
             },
             children: buildMainTableRows(),
           ),
@@ -723,8 +685,6 @@ class _SessionCompactCard extends StatelessWidget {
   final String dni;
   final String entrada;
   final String salida;
-  final String coordsEntrada;
-  final String coordsSalida;
   final String tiempo;
   final String ordinarias;
   final String incidencias;
@@ -735,8 +695,6 @@ class _SessionCompactCard extends StatelessWidget {
     required this.dni,
     required this.entrada,
     required this.salida,
-    required this.coordsEntrada,
-    required this.coordsSalida,
     required this.tiempo,
     required this.ordinarias,
     required this.incidencias,
@@ -881,13 +839,9 @@ class _SessionCompactCard extends StatelessWidget {
                 final isWide = c.maxWidth > 560;
                 final entradaSection = _section('Entrada', [
                   _kv('Fecha y hora', entrada, icon: Icons.login),
-                  const SizedBox(height: 8),
-                  _kv('Coordenadas', coordsEntrada, icon: Icons.my_location),
                 ]);
                 final salidaSection = _section('Salida', [
                   _kv('Fecha y hora', salida, icon: Icons.logout),
-                  const SizedBox(height: 8),
-                  _kv('Coordenadas', coordsSalida, icon: Icons.place_outlined),
                 ]);
 
                 if (isWide) {

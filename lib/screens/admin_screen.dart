@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:open_file/open_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:universal_html/html.dart' as html;
+import 'package:url_launcher/url_launcher.dart';
 
 
 import '../models/empleado.dart';
@@ -16,6 +17,9 @@ import '../models/historico.dart';
 import '../models/incidencia.dart';
 import '../providers/admin_provider.dart';
 import '../models/horario_empleado.dart';
+import '../screens/map_view_screen.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 
@@ -1982,7 +1986,7 @@ class _SessionCompactCard extends StatelessWidget {
     );
   }
 
-  Widget _kv(String label, String value, {IconData? icon}) {
+  Widget _kv(String label, String value, {IconData? icon, bool isCoordinates = false, required BuildContext context}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1998,21 +2002,179 @@ class _SessionCompactCard extends StatelessWidget {
                       color: Colors.grey.shade600,
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
-              Text(
-                value,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade900,
-                    fontWeight: FontWeight.w600),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              if (isCoordinates && value != '-')
+                _buildExpandableMap(value, context)
+              else
+                Text(
+                  value,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade900,
+                      fontWeight: FontWeight.w600),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
       ],
     );
   }
+
+  Widget _buildExpandableMap(String coordenadas, BuildContext context) {
+    return _ExpandableMapWidget(coordenadas: coordenadas);
+  }
+
+  Widget _buildMiniMap(String coordenadas, BuildContext context) {
+    // Parsear coordenadas
+    final coords = coordenadas.split(',');
+    if (coords.length != 2) {
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(
+          child: Icon(Icons.error_outline, color: Colors.grey, size: 24),
+        ),
+      );
+    }
+
+    final lat = double.tryParse(coords[0].trim());
+    final lon = double.tryParse(coords[1].trim());
+
+    if (lat == null || lon == null) {
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(
+          child: Icon(Icons.error_outline, color: Colors.grey, size: 24),
+        ),
+      );
+    }
+
+    return Container(
+      height: 120,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: [
+                          FlutterMap(
+                options: MapOptions(
+                  initialCenter: LatLng(lat, lon),
+                  initialZoom: 14.0,
+                  minZoom: 10.0,
+                  maxZoom: 16.0,
+                ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.fichar',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: LatLng(lat, lon),
+                      width: 30,
+                      height: 30,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2196F3),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: () => _abrirGoogleMaps(lat, lon),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.open_in_new,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _abrirGoogleMaps(double lat, double lon) async {
+    final url = 'https://www.google.com/maps?q=$lat,$lon';
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      // Error silencioso
+    }
+  }
+
+  void _abrirMapa(String coordenadas, BuildContext context) {
+    // Navegar a la pantalla del mapa
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MapViewScreen(
+          coordenadas: coordenadas,
+          titulo: 'Ubicación del fichaje',
+        ),
+      ),
+    );
+  }
+
+
 
   Widget _section(String title, List<Widget> children) {
     return Container(
@@ -2085,14 +2247,14 @@ class _SessionCompactCard extends StatelessWidget {
               builder: (context, c) {
                 final isWide = c.maxWidth > 560;
                 final entradaSection = _section('Entrada', [
-                  _kv('Fecha y hora', entrada, icon: Icons.login),
+                  _kv('Fecha y hora', entrada, icon: Icons.login, context: context),
                   const SizedBox(height: 8),
-                  _kv('Coordenadas', coordsEntrada, icon: Icons.my_location),
+                  _kv('Coordenadas', coordsEntrada, icon: Icons.my_location, isCoordinates: true, context: context),
                 ]);
                 final salidaSection = _section('Salida', [
-                  _kv('Fecha y hora', salida, icon: Icons.logout),
+                  _kv('Fecha y hora', salida, icon: Icons.logout, context: context),
                   const SizedBox(height: 8),
-                  _kv('Coordenadas', coordsSalida, icon: Icons.place_outlined),
+                  _kv('Coordenadas', coordsSalida, icon: Icons.place_outlined, isCoordinates: true, context: context),
                 ]);
 
                 if (isWide) {
@@ -2173,6 +2335,230 @@ class _SessionCompactCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// Widget expandible para el mapa
+class _ExpandableMapWidget extends StatefulWidget {
+  final String coordenadas;
+
+  const _ExpandableMapWidget({
+    Key? key,
+    required this.coordenadas,
+  }) : super(key: key);
+
+  @override
+  State<_ExpandableMapWidget> createState() => _ExpandableMapWidgetState();
+}
+
+class _ExpandableMapWidgetState extends State<_ExpandableMapWidget> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Parsear coordenadas
+    final coords = widget.coordenadas.split(',');
+    if (coords.length != 2) {
+      return _buildErrorState();
+    }
+
+    final lat = double.tryParse(coords[0].trim());
+    final lon = double.tryParse(coords[1].trim());
+
+    if (lat == null || lon == null) {
+      return _buildErrorState();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header clickeable para expandir/contraer
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isExpanded = !_isExpanded;
+            });
+          },
+                      child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.of(context).size.width < 400 ? 6 : 8,
+                vertical: MediaQuery.of(context).size.width < 400 ? 4 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: MediaQuery.of(context).size.width < 400 ? 14 : 16,
+                    color: Colors.blue.shade700,
+                  ),
+                  SizedBox(width: MediaQuery.of(context).size.width < 400 ? 4 : 6),
+                  Expanded(
+                    child: Text(
+                      widget.coordenadas,
+                      style: TextStyle(
+                        fontSize: MediaQuery.of(context).size.width < 400 ? 11 : 13,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  SizedBox(width: MediaQuery.of(context).size.width < 400 ? 6 : 8),
+                  Icon(
+                    _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    size: MediaQuery.of(context).size.width < 400 ? 14 : 16,
+                    color: Colors.blue.shade700,
+                  ),
+                ],
+              ),
+            ),
+        ),
+        
+        // Mapa expandible
+        if (_isExpanded) ...[
+          const SizedBox(height: 8),
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(lat, lon),
+                      initialZoom: 14.0,
+                      minZoom: 10.0,
+                      maxZoom: 16.0,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.fichar',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(lat, lon),
+                            width: 30,
+                            height: 30,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2196F3),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  // Botón para abrir en Google Maps
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => _abrirGoogleMaps(lat, lon),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade600,
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.open_in_new,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 16,
+            color: Colors.red.shade700,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Coordenadas inválidas',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.red.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _abrirGoogleMaps(double lat, double lon) async {
+    final url = 'https://www.google.com/maps?q=$lat,$lon';
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      // Error silencioso
+    }
   }
 }
 
